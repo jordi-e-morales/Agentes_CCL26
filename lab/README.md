@@ -66,6 +66,41 @@ Un cambio respecto de v1: allí corrían dos instancias sobre el mismo L40S y al
 32B se le daba `0.68` de la GPU. Aquí corre una sola, así que sube a `0.90`.
 Si algún día vuelven dos modelos, eso baja.
 
+### Lo medido en este host (2026-09-19)
+
+Con `UTIL=0.90` y `CTX=32768`, el motor arranca en 27 segundos y reparte así:
+
+| | GiB |
+|---|---|
+| GPU total (como la ve vLLM) | 44.43 |
+| × 0.90 de utilización | 39.99 |
+| − pesos del 32B AWQ | 18.01 |
+| − pico de activaciones | 8.02 |
+| − non_torch | 0.13 |
+| **= caché KV** | **13.82** |
+
+Y de ahí sale **el número que condiciona el diseño**:
+
+```
+Maximum concurrency for 32768 tokens per request: 3.46x
+```
+
+Solo caben ~3.5 peticiones en vuelo. Con router, dos agentes y el traductor del
+guardrail, cuatro llamadas concurrentes con contexto largo ya se encolan — y
+eso se ve como latencia, con la regla de abandono de 60 segundos encima.
+
+**Bajar `CTX` es la optimización más barata del proyecto**, porque el pico de
+activaciones también baja: a 16k la concurrencia pasa de ~3.5 a ~7.
+
+```bash
+CTX=16384 ./lab/vllm-up.sh
+```
+
+Queda en 32k solo hasta saber cuánto contexto necesita de verdad cada agente.
+
+El tool-calling está confirmado en esta versión: el log dice
+`"auto" tool choice has been enabled`.
+
 ### El contrato: endpoint.env
 
 Los dos scripts de motor escriben `lab/endpoint.env`:

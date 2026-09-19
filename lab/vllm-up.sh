@@ -78,12 +78,34 @@ TOOL_PARSER="${TOOL_PARSER:-hermes}"
 # En v1 corrian DOS instancias sobre el mismo L40S (un 7B y este 32B), asi que
 # al 32B se le daba 0.68 de la GPU para dejarle sitio al otro.
 #
-# Aqui corre UNA sola. Ya no hay con quien repartir, asi que sube a 0.90: los
-# ~19 GB de pesos dejan del orden de 20 GB de cache KV, que es holgura de
-# verdad. Si algun dia vuelven dos modelos, esto baja, no sube.
+# Aqui corre UNA sola. Ya no hay con quien repartir, asi que sube a 0.90.
+# Si algun dia vuelven dos modelos, esto baja, no sube.
 UTIL="${UTIL:-0.90}"
 
-# 32k es la ventana nativa de Qwen2.5. Con una sola instancia cabe sin apretar.
+# MEDIDO en este host el 2026-09-19 con UTIL=0.90 y CTX=32768:
+#
+#   GPU total (como la ve vLLM)   44.43 GiB
+#   x 0.90                        39.99 GiB  <- presupuesto
+#   - pesos                       18.01
+#   - pico de activaciones         8.02      <- proporcional a CTX
+#   - non_torch                    0.13
+#   = cache KV                    13.82 GiB  (7078 bloques)
+#
+#   Maximum concurrency for 32768 tokens per request: 3.46x
+#
+# ESE 3.46x ES EL NUMERO QUE CONDICIONA EL DISEÑO. Con router, dos agentes y
+# quiza el traductor del guardrail, cuatro llamadas concurrentes con contexto
+# largo YA NO CABEN: se encolan, y eso se ve como latencia con la regla de
+# abandono de 60 segundos encima.
+#
+# Bajar CTX da doble premio, porque el pico de activaciones tambien baja:
+# a 16384 la concurrencia pasa de ~3.5 a ~7. El CLAUDE.md de la demo v1 ya
+# decia que a los agentes que debaten les basta 16k porque reciben el caso
+# recortado; solo el que ve el expediente completo necesita ventana grande.
+#
+# 32768 es la ventana nativa de Qwen2.5 y es el default aqui solo hasta que
+# sepamos cuanto contexto necesita de verdad cada agente. Cuando se sepa,
+# bajarlo es la optimizacion mas barata que hay en todo el proyecto.
 CTX="${CTX:-32768}"
 
 # Cache KV en fp8: la reduce a la mitad. La perdida de precision en la atencion
@@ -100,6 +122,10 @@ KV_DTYPE="${KV_DTYPE:-fp8}"
 # ocupan memoria que hacia falta para el otro modelo. Aqui sobra memoria, y los
 # grafos hacen la inferencia mas rapida. La latencia importa: la regla de
 # abandono del guion son 60 segundos.
+#
+# MEDIDO el 2026-09-19: capturar los grafos costo 12 segundos y 0.44 GiB, y el
+# arranque completo del motor fueron 26.61 segundos. Es barato; dejarlos
+# encendidos sale a cuenta.
 #
 # Si algo no cabe, este es el primer interruptor que tocar.
 EAGER="${EAGER:-0}"
