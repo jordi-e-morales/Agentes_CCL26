@@ -277,7 +277,19 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VENV="$REPO/.venv"
 
 log "Entorno virtual de Python"
-sudo apt-get install -y -qq python3-venv python3-pip
+# Solo se instala si de verdad falta. Ubuntu trae python3, pero el modulo venv
+# viene en un paquete aparte que no siempre esta.
+#
+# Se comprueba en vez de instalar a ciegas porque cada apt-get install en este
+# host es una interrupcion potencial (dialogos de apt, needrestart) y un cambio
+# que no pediste. Si ya esta, no se toca nada.
+if python3 -m venv --help >/dev/null 2>&1; then
+  echo "El modulo venv ya esta disponible. No se instala nada."
+else
+  echo "Falta el modulo venv. Instalando python3-venv"
+  sudo apt-get install -y -qq python3-venv
+fi
+
 if [ -d "$VENV" ]; then
   echo "Ya existe en $VENV"
 else
