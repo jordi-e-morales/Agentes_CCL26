@@ -6,3 +6,7 @@ __pycache__/
 # Credenciales y configuracion local, nunca al repo
 .env
 *.kubeconfig
+
+# Lo escriben vllm-up.sh y nim-up.sh. Lleva la IP del host, que cambia
+# entre instancias, asi que se regenera en vez de viajar en el repo.
+lab/endpoint.env

@@ -28,7 +28,8 @@
 set -euo pipefail
 
 NOMBRE=vllm
-PUERTO=8000
+PUERTO="${PUERTO:-8000}"
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # ---------------------------------------------------------------------------
 # La imagen: AQUI HAY UNA DEUDA, y esta anotada a proposito
@@ -79,6 +80,17 @@ if ! docker run --rm --gpus all nvidia/cuda:12.5.1-base-ubuntu22.04 nvidia-smi >
   exit 1
 fi
 nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader
+
+# Un solo motor a la vez en el mismo puerto. Con los dos arriba, los agentes
+# hablarian con el que gano la carrera: el error que no se nota hasta que las
+# mediciones ya no significan nada.
+if docker ps --format '{{.Names}}' | grep -qx nim; then
+  echo ""
+  echo "ERROR: el NIM esta corriendo y ocupa el mismo puerto."
+  echo "Bajalo primero:   ./nim-up.sh --down"
+  echo "O levanta vLLM en otro puerto:   PUERTO=8001 ./vllm-up.sh"
+  exit 1
+fi
 
 if docker ps --format '{{.Names}}' | grep -qx "$NOMBRE"; then
   log "vLLM ya estaba corriendo"
@@ -134,18 +146,34 @@ done
 log "vLLM listo"
 curl -s "http://localhost:${PUERTO}/v1/models" | jq -r '.data[].id' 2>/dev/null || true
 
-# --- Como lo alcanzan los agentes dentro de kind ---------------------------
-# Los pods no pueden usar "localhost": eso es el propio pod. Necesitan la IP
-# del host en la red de Docker donde viven los nodos de kind.
-echo ""
+# --- El contrato compartido con nim-up.sh ----------------------------------
+# Los dos motores escriben ESTE archivo y los agentes lo leen. Es lo que hace
+# que cambiar de motor sea bajar uno y subir el otro, sin tocar codigo.
+#
+# OPENAI_BASE_URL lleva la IP del HOST en la red de Docker, no "localhost":
+# dentro de un pod, localhost es el propio pod.
 if docker network inspect kind >/dev/null 2>&1; then
   IP_HOST=$(docker network inspect kind -f '{{(index .IPAM.Config 0).Gateway}}')
-  echo "Desde los pods de kind, el endpoint es:"
-  echo "  http://${IP_HOST}:${PUERTO}/v1"
 else
-  echo "El cluster de kind todavia no existe (corre ./cluster-up.sh)."
-  echo "Despues vuelve a correr esto para ver la IP que deben usar los pods."
+  IP_HOST=""
 fi
+{
+  echo "# Generado por lab/vllm-up.sh. No editar a mano: se reescribe."
+  echo "MOTOR=vllm"
+  echo "MODEL=$MODELO"
+  echo "TOOL_CALL_PARSER=$TOOL_PARSER"
+  echo "OPENAI_BASE_URL_HOST=http://localhost:${PUERTO}/v1"
+  [ -n "$IP_HOST" ] && echo "OPENAI_BASE_URL=http://${IP_HOST}:${PUERTO}/v1"
+} > "$DIR/endpoint.env"
+
 echo ""
+echo "Escrito lab/endpoint.env:"
+sed 's/^/  /' "$DIR/endpoint.env"
+echo ""
+if [ -z "$IP_HOST" ]; then
+  echo "El cluster de kind no existe todavia (corre ./cluster-up.sh), asi que"
+  echo "falta la URL que usan los pods. Vuelve a correr esto despues."
+  echo ""
+fi
 echo "Desde el host:  curl http://localhost:${PUERTO}/v1/models"
 echo "Ver logs:       ./vllm-up.sh --logs"
