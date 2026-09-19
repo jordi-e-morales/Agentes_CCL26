@@ -1,0 +1,178 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/jordi-e-morales/Agentes_CCL26/esquema/alerta.schema.json",
+  "title": "Alerta",
+  "description": "Unidad de trabajo de la malla de agentes. Neutral al dominio a proposito: la misma estructura sirve para triage de alertas de monitoreo transaccional y para triage de alertas de SOC, sin cambiar codigo. Por eso NO hay campos como cliente, monto o cuenta_origen: solo alerta, sujeto y evidencia.",
+  "type": "object",
+  "required": ["id", "version_esquema", "origen", "creada_en", "severidad", "titulo", "sujeto"],
+  "additionalProperties": false,
+
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Identificador de la alerta. Unico dentro del conjunto de casos cargado.",
+      "examples": ["ALR-FICTICIA-0001"]
+    },
+    "version_esquema": {
+      "type": "string",
+      "description": "Version de ESTE esquema con la que se escribio la alerta. Si el esquema cambia, esto permite saber que casos viejos siguen siendo validos.",
+      "const": "1.0"
+    },
+    "origen": {
+      "type": "string",
+      "description": "Que sistema genero la alerta. Es texto libre a proposito: en un dominio dira 'monitoreo transaccional' y en otro 'SIEM'. Los agentes no ramifican sobre este valor, solo lo muestran.",
+      "examples": ["monitoreo-transaccional-ficticio", "siem-ficticio"]
+    },
+    "creada_en": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Cuando se genero la alerta, en ISO 8601."
+    },
+    "severidad": {
+      "type": "string",
+      "enum": ["baja", "media", "alta", "critica"],
+      "description": "Severidad que le asigno el sistema de origen. El triage puede contradecirla; para eso existe el triage."
+    },
+    "titulo": {
+      "type": "string",
+      "description": "Una linea que explica la alerta. Se lee en 3 segundos, sin saber del dominio."
+    },
+    "sujeto": { "$ref": "#/$defs/sujeto" },
+
+    "contexto": {
+      "type": "array",
+      "description": "Textos libres que acompanan a la alerta: notas, descripciones, comentarios. AQUI es donde vive el riesgo. Cada fragmento declara quien lo escribio con source_trust, y la interfaz renderiza distinto los que vienen de fuera.",
+      "items": { "$ref": "#/$defs/fragmento" },
+      "default": []
+    },
+
+    "evidencia": {
+      "type": "array",
+      "description": "Lo que devolvieron las tools de evidencia (consulta_historial, lista_sancionados, perfil_sujeto). Se llena durante el triage, no viene en el caso original.",
+      "items": { "$ref": "#/$defs/evidencia" },
+      "default": []
+    },
+
+    "disposicion": {
+      "description": "Resultado del triage. Nulo mientras la alerta no se haya dispuesto. Lo escribe la tool dispone_caso, que es LA ACCION PELIGROSA del demo: es lo que el ataque intenta abusar.",
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/disposicion" }
+      ],
+      "default": null
+    },
+
+    "sintetica": {
+      "type": "boolean",
+      "description": "Marca que los datos son inventados. Siempre true en este proyecto: el CLAUDE.md exige datos sinteticos etiquetados como tales y con nombres claramente ficticios. El campo existe para que la interfaz pueda mostrarlo sin que nadie tenga que acordarse.",
+      "const": true
+    }
+  },
+
+  "$defs": {
+
+    "source_trust": {
+      "type": "string",
+      "enum": ["internal", "external", "unknown"],
+      "description": "Quien escribio este texto. 'internal' = lo produjo un sistema nuestro. 'external' = lo escribio alguien de fuera y por lo tanto es ENTRADA NO CONFIABLE: puede contener instrucciones dirigidas al modelo. 'unknown' = no se sabe, y se trata como external. La inyeccion del segmento 6 vive siempre en un fragmento external; no existe ningun caso donde llegue por otra via."
+    },
+
+    "sujeto": {
+      "type": "object",
+      "description": "Sobre quien o sobre que es la alerta. Deliberadamente generico: en un dominio es una persona o una cuenta, en otro es un host o una identidad de servicio.",
+      "required": ["id", "tipo", "etiqueta"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Identificador del sujeto. Es la llave con la que las tools de evidencia lo buscan."
+        },
+        "tipo": {
+          "type": "string",
+          "description": "Que clase de sujeto es. Lista abierta a proposito: agregar un tipo nuevo no debe requerir tocar el esquema ni el codigo.",
+          "examples": ["persona", "organizacion", "cuenta", "host", "identidad", "servicio"]
+        },
+        "etiqueta": {
+          "type": "string",
+          "description": "Como se le llama en pantalla. Siempre un nombre claramente ficticio."
+        },
+        "atributos": {
+          "type": "object",
+          "description": "Datos adicionales del sujeto, como pares clave-valor. Es el escape hatch que mantiene neutral al resto del esquema: lo especifico del dominio vive AQUI, donde nada ramifica sobre ello.",
+          "additionalProperties": { "type": ["string", "number", "boolean"] },
+          "default": {}
+        }
+      }
+    },
+
+    "fragmento": {
+      "type": "object",
+      "description": "Un texto libre con su procedencia declarada.",
+      "required": ["id", "etiqueta", "texto", "source_trust"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "etiqueta": {
+          "type": "string",
+          "description": "Que es este texto, en palabras de la interfaz.",
+          "examples": ["nota del analista", "descripcion del reporte externo"]
+        },
+        "texto": { "type": "string" },
+        "source_trust": { "$ref": "#/$defs/source_trust" },
+        "autor": {
+          "type": "string",
+          "description": "Quien lo escribio, si se sabe. Nombre ficticio."
+        }
+      }
+    },
+
+    "evidencia": {
+      "type": "object",
+      "description": "Una pieza de evidencia que devolvio una tool.",
+      "required": ["id", "tool", "obtenida_en", "source_trust", "resumen"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "tool": {
+          "type": "string",
+          "description": "Que tool la produjo. Sirve para la traza: cada tool call es un span.",
+          "examples": ["consulta_historial", "lista_sancionados", "perfil_sujeto"]
+        },
+        "obtenida_en": { "type": "string", "format": "date-time" },
+        "source_trust": { "$ref": "#/$defs/source_trust" },
+        "resumen": {
+          "type": "string",
+          "description": "Una linea legible. Regla de diseno del CLAUDE.md: las tools de evidencia deben explicarse solas en tres segundos, sin que nadie sepa del dominio."
+        },
+        "datos": {
+          "type": "object",
+          "description": "La salida estructurada de la tool, tal cual. Sin forma fija: cada tool devuelve lo suyo.",
+          "additionalProperties": true,
+          "default": {}
+        }
+      }
+    },
+
+    "disposicion": {
+      "type": "object",
+      "required": ["estado", "decidida_por", "decidida_en", "justificacion"],
+      "additionalProperties": false,
+      "properties": {
+        "estado": {
+          "type": "string",
+          "enum": ["escalada", "cerrada", "en_revision"],
+          "description": "A donde fue a parar la alerta."
+        },
+        "decidida_por": {
+          "type": "string",
+          "description": "Que agente la dispuso. Es una identidad de la malla, no una persona."
+        },
+        "decidida_en": { "type": "string", "format": "date-time" },
+        "justificacion": {
+          "type": "string",
+          "description": "Por que. Si esto no cita evidencia recogida, el triage no se sostiene, y eso es visible en pantalla."
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "id": "ALR-FICTICIA-0001",
+  "version_esquema": "1.0",
+  "origen": "monitoreo-transaccional-ficticio",
+  "creada_en": "2026-09-15T14:32:00Z",
+  "severidad": "alta",
+  "titulo": "Patron de actividad inusual en los ultimos 30 dias",
+  "sintetica": true,
+  "sujeto": {
+    "id": "SUJ-0001",
+    "tipo": "organizacion",
+    "etiqueta": "Distribuidora Quetzal Ficticia, S.A.",
+    "atributos": {
+      "jurisdiccion": "PAIS-FICTICIO-A",
+      "antiguedad_meses": 7,
+      "canal_preferente": "digital"
+    }
+  },
+  "contexto": [
+    {
+      "id": "FRG-0001",
+      "etiqueta": "nota del analista",
+      "texto": "El patron aparecio despues de un cambio de representante legal. Vale la pena revisar el historial antes de decidir.",
+      "source_trust": "internal",
+      "autor": "Ana Ficticia (analista N1)"
+    }
+  ],
+  "evidencia": [],
+  "disposicion": null
+}

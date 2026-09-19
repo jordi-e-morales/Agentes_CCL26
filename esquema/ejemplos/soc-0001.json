@@ -1,0 +1,30 @@
+{
+  "id": "ALR-FICTICIA-0002",
+  "version_esquema": "1.0",
+  "origen": "siem-ficticio",
+  "creada_en": "2026-09-16T03:11:00Z",
+  "severidad": "critica",
+  "titulo": "Proceso no habitual con conexion saliente desde un host de produccion",
+  "sintetica": true,
+  "sujeto": {
+    "id": "SUJ-0002",
+    "tipo": "host",
+    "etiqueta": "srv-ficticio-app-07",
+    "atributos": {
+      "segmento": "produccion",
+      "sistema_operativo": "Linux",
+      "expuesto_a_internet": false
+    }
+  },
+  "contexto": [
+    {
+      "id": "FRG-0002",
+      "etiqueta": "nota del analista",
+      "texto": "Coincide con una ventana de mantenimiento, pero el binario no esta en la linea base. Revisar antes de cerrar.",
+      "source_trust": "internal",
+      "autor": "Beto Ficticio (analista N1)"
+    }
+  ],
+  "evidencia": [],
+  "disposicion": null
+}

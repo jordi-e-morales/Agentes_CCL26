@@ -1,0 +1,25 @@
+# Configuracion del cluster de kind.
+#
+# Dos cosas importantes y las dos son a proposito:
+#
+#   disableDefaultCNI: true
+#     Kubernetes normalmente trae su propia red. La apagamos porque queremos
+#     que Cilium sea la red. Si dejas las dos, se pelean.
+#
+#   kubeProxyMode: none
+#     kube-proxy es el componente clasico que dirige el trafico entre
+#     servicios. Cilium lo reemplaza con eBPF, que es mas rapido y ademas
+#     es lo que nos deja escribir politicas a nivel de identidad.
+#
+# Un nodo de control y un worker. Con eso basta para el demo, y se parece
+# lo suficiente a un cluster real.
+
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: agentes
+nodes:
+  - role: control-plane
+  - role: worker
+networking:
+  disableDefaultCNI: true
+  kubeProxyMode: "none"

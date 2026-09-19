@@ -1,0 +1,8 @@
+# Entorno virtual de Python: lo recrea lab/bootstrap.sh
+.venv/
+__pycache__/
+*.pyc
+
+# Credenciales y configuracion local, nunca al repo
+.env
+*.kubeconfig

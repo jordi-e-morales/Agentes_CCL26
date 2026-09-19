@@ -1,0 +1,18 @@
+# Dependencias de Python del proyecto.
+#
+# Se instalan en el venv de la raiz del repo, que crea lab/bootstrap.sh.
+# Nunca en el Python del sistema.
+#
+# Por ahora solo esta lo minimo para el segmento 1: hablarle al endpoint de
+# vLLM, que expone la API de OpenAI. Las dependencias de SLIM y de OpenTelemetry
+# entran cuando esten validadas, no antes.
+#
+# Las versiones se congelan despues de la primera corrida buena:
+#   .venv/bin/pip freeze > requirements.lock.txt
+# y el dia del evento se instala desde el .lock, no desde este archivo.
+
+openai
+
+# Validacion del esquema (esquema/valida.py). Es dependencia de desarrollo,
+# no la necesita nada que corra el dia del evento.
+jsonschema
