@@ -13,6 +13,11 @@
 
 openai
 
+# El spike de SLIM (spike-slim/). Es el transporte de la malla: paquete oficial
+# de AGNTCY, trae el nodo embebido en Rust ademas de las bindings de Python.
+# Se instala aqui porque el spike decide si SLIM entra al proyecto o no.
+slim-bindings
+
 # Validacion del esquema (esquema/valida.py). Es dependencia de desarrollo,
 # no la necesita nada que corra el dia del evento.
 jsonschema
