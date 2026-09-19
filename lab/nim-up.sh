@@ -61,6 +61,7 @@
 #   ./nim-up.sh --profiles      # QUE PERFILES tiene el NIM para ESTA GPU
 #   ./nim-up.sh --logs
 #   ./nim-up.sh --down
+#   ./nim-up.sh --purge       # borra imagen y pesos, para recuperar disco
 
 set -euo pipefail
 
@@ -152,6 +153,29 @@ ngc_login() {
 case "${1:-}" in
   --logs) exec docker logs -f "$NOMBRE" ;;
   --down) docker rm -f "$NOMBRE" 2>/dev/null && echo "NIM detenido" || echo "No estaba corriendo"; exit 0 ;;
+  --purge)
+    # Recupera el disco que gasto el intento con el NIM. Son DOS bultos y estan
+    # en sitios distintos, que es justo lo que hace que uno se olvide:
+    #   - la imagen del contenedor, en el almacenamiento de Docker
+    #   - los pesos del modelo, en $CACHE
+    #
+    # Existe como subcomando y no como instruccion en un README porque el dia
+    # que este host se quede sin disco, nadie va a ir a buscar el README.
+    #
+    # NO se usa "docker system prune -a" a proposito: eso borraria tambien la
+    # imagen de vLLM y las de los nodos de kind, y el cluster se quedaria sin
+    # poder recrearse.
+    log "Espacio que ocupa el NIM ahora"
+    du -sh "$CACHE" 2>/dev/null || echo "  (sin pesos en $CACHE)"
+    docker images "${IMAGEN%%:*}" 2>/dev/null || true
+    log "Borrando"
+    docker rm -f "$NOMBRE" >/dev/null 2>&1 || true
+    docker rmi "$IMAGEN" 2>/dev/null || echo "  la imagen no estaba"
+    rm -rf "$CACHE"
+    echo ""
+    echo "Listo. NO se toco ~/.cache/huggingface: ahi viven los pesos de vLLM."
+    exit 0
+    ;;
   --profiles)
     # Esto contesta LA pregunta abierta de este modelo en esta GPU.
     #

@@ -94,6 +94,16 @@ y el trabajo de averiguación sirve:
 - El perfil correcto sería `vllm-fp8-tp1-pp1-34.0`, fijado con
   `NIM_MODEL_PROFILE` para que no lo elija el contenedor cada mañana.
 
+Para recuperar el disco que gastó el intento —la imagen y los pesos están en
+sitios distintos, que es lo que hace que uno se olvide de uno de los dos—:
+
+```bash
+./lab/nim-up.sh --purge
+```
+
+Nunca `docker system prune -a` para esto: se llevaría por delante la imagen de
+vLLM y las de los nodos de kind.
+
 Consecuencia para el `CLAUDE.md` §12: con un 32B AWQ a `0.90` de la GPU, **no
 caben dos tiers de modelo**. Esa decisión abierta la cierra el hardware.
 
