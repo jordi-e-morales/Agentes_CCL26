@@ -19,6 +19,31 @@
 
 set -euo pipefail
 
+# ---------------------------------------------------------------------------
+# Que apt no pregunte nada
+# ---------------------------------------------------------------------------
+# Este script tiene que correr DESATENDIDO. Si se queda esperando una respuesta
+# en un menu, deja de servir para lo unico que existe: migrar a una instancia
+# nueva sin que nadie se acuerde de los detalles.
+#
+# Hay dos cosas distintas que preguntan, y hay que callar a las dos:
+#
+#   DEBIAN_FRONTEND=noninteractive
+#     Apaga los dialogos de configuracion de los paquetes (debconf): el clasico
+#     "¿conservar tu version del archivo de configuracion?".
+#
+#   NEEDRESTART_MODE=l
+#     needrestart es una utilidad de Ubuntu que, despues de instalar algo que
+#     actualiza librerias, abre un cuadro semigrafico preguntando que servicios
+#     reiniciar. Con "l" solo los LISTA y sigue de largo.
+#
+#     Se usa "l" y no "a" (reiniciar automaticamente) a proposito: "a" podria
+#     reiniciar Docker a media instalacion, y debajo de Docker estan los nodos
+#     de kind. Los servicios se quedan con las librerias viejas hasta el
+#     siguiente reinicio del host, lo cual en un lab no le importa a nadie.
+export DEBIAN_FRONTEND=noninteractive
+export NEEDRESTART_MODE=l
+
 log() { echo ""; echo "=== $1"; }
 
 # ---------------------------------------------------------------------------
