@@ -16,89 +16,86 @@ Los cuatro primeros son idempotentes: puedes correrlos de nuevo sin romper nada.
 | `bootstrap.sh` | Herramientas: Docker, kubectl, kind, Cilium, Hubble, Helm, GPU en contenedores, venv | Una vez por host |
 | `cluster-up.sh` | Crea el cluster de kind y le pone Cilium como red | Después del bootstrap |
 | `tetragon-up.sh` | Control de kernel: el SIGKILL del segmento 6 | Después del cluster |
-| `vllm-up.sh` | Motor de inferencia con vLLM | Independiente del cluster |
-| `nim-up.sh` | Motor de inferencia con un NVIDIA NIM | Alternativa a `vllm-up.sh` |
+| `vllm-up.sh` | **El motor de inferencia.** Qwen2.5-32B-AWQ | Independiente del cluster |
+| `nim-up.sh` | NVIDIA NIM. **No sirve en este host** (driver 555) | Solo con driver ≥ 580 |
 | `reparar-cluster.sh` | Rescate cuando el cluster queda colgado tras un reinicio | Solo cuando falla algo |
 
-## Dos motores, un contrato
+## El motor: vLLM, y el driver manda
 
-`vllm-up.sh` y `nim-up.sh` son hermanos, no alternativas excluyentes de diseño.
-Los dos exponen la API de OpenAI en el puerto 8000 y los dos escriben
-`endpoint.env`:
+El motor en uso es **`vllm-up.sh`** con Qwen2.5-32B-Instruct-AWQ.
+`nim-up.sh` **no funciona en este host** y está marcado como tal.
+
+### El techo es el driver, no el software
+
+El host tiene driver **555.42.06**, que expone **CUDA 12.5**. Las imágenes
+modernas —el NIM de NVIDIA y `vllm/vllm-openai:latest`— se compilan sobre
+**CUDA 13**, que exige driver **≥ 580**. Fallan con:
 
 ```
-MOTOR=nim
-MODEL=nvidia/nemotron-3-nano
-TOOL_CALL_PARSER=qwen3_coder
+CUDA driver ... too old (found version 12050)
+```
+
+Y no hay atajo por compatibilidad hacia adelante: las librerías de CUDA 13
+están hechas para las ramas **R535 y R570**. El 555 cae justo en el hueco.
+
+Actualizar el driver resolvería las dos cosas, pero **no hay reinicio
+disponible en este host**. Así que la imagen queda anclada a
+`vllm/vllm-openai:v0.6.6.post1`, que está sobre CUDA 12.x y ya funcionó en
+dCloud durante la demo v1.
+
+Es una versión vieja a propósito. El límite no lo pone vLLM, lo pone el driver.
+
+### Lo que se hereda de la demo v1
+
+Varios valores de `vllm-up.sh` no se dedujeron, se **midieron** en dCloud
+durante `triage-multiagente`. Cada uno lleva su motivo al lado en el script:
+
+| Ajuste | Por qué |
+|---|---|
+| AWQ y no FP8 | AWQ carga ya cuantizado (~19 GB); el FP8 dinámico obliga a cargar el bf16 entero antes de comprimir |
+| `--kv-cache-dtype fp8` | Reduce la caché KV a la mitad |
+| `--enable-prefix-caching` | Los agentes comparten prefijo de prompt |
+| Sin `--restart` | Un arranque fallido en bucle vuelve a pedir VRAM y enturbia el diagnóstico |
+| Barrido del contenedor antes de arrancar | Un contenedor muerto puede seguir reteniendo VRAM, y el error culpa a la caché en vez del cadáver |
+
+**La IP del host se filtra a IPv4.** La red de kind es dual-stack: si tomas el
+primer gateway a ciegas te puede tocar el IPv6, y el motor se publica en IPv4,
+así que los pods apuntarían a una dirección inalcanzable.
+
+Un cambio respecto de v1: allí corrían dos instancias sobre el mismo L40S y al
+32B se le daba `0.68` de la GPU. Aquí corre una sola, así que sube a `0.90`.
+Si algún día vuelven dos modelos, eso baja.
+
+### El contrato: endpoint.env
+
+Los dos scripts de motor escriben `lab/endpoint.env`:
+
+```
+MOTOR=vllm
+MODEL=Qwen/Qwen2.5-32B-Instruct-AWQ
+TOOL_CALL_PARSER=hermes
 OPENAI_BASE_URL=http://172.18.0.1:8000/v1
 ```
 
 **Los agentes leen ese archivo y nunca hablan con algo específico de un motor.**
-Esa es toda la regla, y es la que mantiene barata la decisión: cambiar de vLLM
-a NIM es bajar uno y subir el otro.
+Esa es toda la regla, y es lo que mantuvo barata esta decisión: cuando el NIM
+falló, lo que se perdió fue una tarde, no un refactor.
 
-Cada script se niega a arrancar si el otro tiene el puerto tomado. Con los dos
-arriba, los agentes hablarían con el que ganó la carrera — el peor tipo de
-error, el que no se nota hasta que las mediciones ya no significan nada. Para
-compararlos a la vez: `PUERTO=8001 ./nim-up.sh`.
+### Qué queda del intento con NIM
 
-| | `vllm-up.sh` | `nim-up.sh` |
-|---|---|---|
-| Modelo por omisión | Qwen2.5-7B-Instruct | Nemotron 3 Nano 30B A3B |
-| Parser de tools | `hermes` | `qwen3_coder` |
-| Razonamiento | No | **Sí, por omisión** |
-| Credenciales | Ninguna | Clave de NGC |
-| Descarga | Varios GB | Decenas de GB |
+`nim-up.sh` se queda en el repo. En un host con driver ≥ 580 funciona tal cual,
+y el trabajo de averiguación sirve:
 
-### El razonamiento no es una bandera del servidor
+- **El L40S sí está soportado** por el NIM de Nemotron 3 Nano. El model card del
+  FP8 solo listaba H100 y A100; la matriz de soporte de NIM tenía razón.
+- **Todos los perfiles ejecutables ahí son `vllm-`**, ninguno compilable a
+  TensorRT-LLM. En esta GPU el NIM habría corrido vLLM por dentro: lo que
+  aporta es empaquetado, licencia y perfiles elegidos, no un motor más rápido.
+- El perfil correcto sería `vllm-fp8-tp1-pp1-34.0`, fijado con
+  `NIM_MODEL_PROFILE` para que no lo elija el contenedor cada mañana.
 
-Es un parámetro **por petición**, así que `nim-up.sh` no puede encenderlo ni
-apagarlo. Lo deciden los agentes en cada llamada:
-
-```json
-{"chat_template_kwargs": {"enable_thinking": false}}
-```
-
-Omitirlo lo deja encendido. Esto conviene tenerlo claro al construir los
-agentes, porque el intercambio es real: el razonamiento mejora el tool-calling
-y engorda `tokens.completion` —lo que hace visible la atribución de costos del
-segmento 5— pero sube la latencia, y la regla de abandono del guion es de 60
-segundos.
-
-### El NIM en esta GPU: resuelto, y con un hallazgo
-
-Las fuentes no coincidian —el model card del FP8 solo listaba H100 y A100, la
-matriz de soporte de NIM si incluia L40S— asi que se le pregunto al contenedor:
-
-```bash
-./lab/nim-up.sh --profiles
-```
-
-**El L40S esta soportado.** Y el reporte trajo algo que no se veia en ninguna
-documentacion: todos los perfiles ejecutables aqui empiezan con `vllm-`, y
-ninguno es compilable a TensorRT-LLM. **En esta GPU el NIM corre vLLM por
-dentro.**
-
-Eso no lo invalida, pero recalibra que se esta comprando: no es un motor mas
-rapido, es el mismo motor empaquetado, licenciado bajo NVIDIA AI Enterprise y
-con los perfiles ya elegidos. La ganancia es de narrativa y de
-reproducibilidad. Conviene tenerlo claro antes de contarlo en la sesion.
-
-| Perfil | Pide | En 46 GB |
-|---|---|---|
-| `vllm-fp8-tp1-pp1-34.0` | ≥34 GB | Sí, deja ~12 GB de KV cache |
-| `vllm-nvidia-h200-fp8-tp1-pp1-42.0` | ≥42 GB | Apenas, deja ~4 GB |
-| `vllm-bf16-tp1-pp1-80.0` | ≥63 GB | No cabe |
-
-`nim-up.sh` **fija** el primero con `NIM_MODEL_PROFILE`. NIM elige perfil solo
-en cada arranque, y si un dia eligiera el de 42 GB el sintoma seria un demo
-lentisimo sin causa visible — la peor forma de fallar en vivo.
-
-El hash del perfil pertenece a esa version de la imagen. Si cambias el tag,
-vuelve a correr `--profiles` y actualiza el valor en el script.
-
-Consecuencia para el `CLAUDE.md` §12: con 34 GB ocupados por un solo modelo,
-**no caben dos tiers en esta GPU**. Esa decision abierta la cierra el hardware.
+Consecuencia para el `CLAUDE.md` §12: con un 32B AWQ a `0.90` de la GPU, **no
+caben dos tiers de modelo**. Esa decisión abierta la cierra el hardware.
 
 ## Tres cosas que no son obvias
 

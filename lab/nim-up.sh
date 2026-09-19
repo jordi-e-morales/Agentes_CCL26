@@ -2,6 +2,21 @@
 #
 # Levanta un NVIDIA NIM con Nemotron 3 Nano (30B A3B) en la GPU del host.
 #
+# ###################################################################
+# # NO FUNCIONA EN ESTE HOST. Probado el 2026-09-19, falla asi:     #
+# #   CUDA driver ... too old (found version 12050)                 #
+# #                                                                 #
+# # La imagen del NIM esta compilada sobre CUDA 13, que exige       #
+# # driver >= 580. Este host tiene 555 (CUDA 12.5) y no se puede    #
+# # actualizar: no hay reinicio disponible. Las librerias de        #
+# # compatibilidad hacia adelante de CUDA 13 cubren las ramas R535  #
+# # y R570; el 555 cae justo en el hueco.                           #
+# #                                                                 #
+# # El motor en uso es vllm-up.sh. Este script se queda porque el   #
+# # trabajo de averiguacion sirve (ver el bloque del PERFIL) y      #
+# # porque en un host con driver >= 580 funciona tal cual.          #
+# ###################################################################
+#
 # Es el HERMANO de vllm-up.sh, no su reemplazo. Los dos exponen la misma API
 # (la de OpenAI) en el mismo puerto y los dos escriben el mismo archivo de
 # configuracion, endpoint.env. Por eso cambiar de motor es bajar uno y subir el
@@ -240,10 +255,14 @@ curl -s "http://localhost:${PUERTO}/v1/models" | jq -r '.data[].id' 2>/dev/null 
 # --- El contrato compartido con vllm-up.sh ---------------------------------
 # Los dos motores escriben ESTE archivo, y los agentes lo leen. Es lo que hace
 # que cambiar de motor no sea tocar codigo.
+# OJO CON LA IP: la red de kind es DUAL-STACK. Tomar el primer gateway a
+# ciegas puede devolver el IPv6 (fc00:...), y el motor se publica en IPv4 con
+# -p, asi que los pods apuntarian a una direccion inalcanzable. Aprendido en la
+# demo v1. Por eso se listan todas y se filtra la que empieza con digitos.
+IP_HOST=""
 if docker network inspect kind >/dev/null 2>&1; then
-  IP_HOST=$(docker network inspect kind -f '{{(index .IPAM.Config 0).Gateway}}')
-else
-  IP_HOST=""
+  IP_HOST="$(docker network inspect kind -f '{{range .IPAM.Config}}{{.Gateway}} {{end}}' \
+             | tr ' ' '\n' | grep -E '^[0-9]+\.' | head -1)"
 fi
 {
   echo "# Generado por lab/nim-up.sh. No editar a mano: se reescribe."
