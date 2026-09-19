@@ -1,5 +1,32 @@
 # Spike de SLIM
 
+> **¿Qué es un "spike"?** Es un término de programación ágil: un experimento
+> **acotado en tiempo** cuyo producto es **conocimiento**, no código de
+> producción. Se hace cuando una decisión depende de algo que no sabes y que no
+> puedes resolver leyendo documentación.
+>
+> Tiene tres rasgos que lo distinguen de ponerse a programar:
+>
+> 1. **Una pregunta concreta.** Aquí: *¿SLIM permite un salto lateral entre
+>    agentes?*
+> 2. **Un criterio de éxito fijado ANTES de empezar**, para no acabar
+>    convenciéndote de que lo que salió ya está bien.
+> 3. **Una fecha de corte.** Si se pasa, la respuesta es "no" y se activa el
+>    plan B.
+>
+> El código de un spike es **desechable por diseño**. Si funciona, lo que te
+> llevas es la respuesta, no el código. Por eso esto vive en `spike-slim/` y no
+> dentro de la malla: cuando conteste la pregunta, probablemente se tire.
+>
+> Se hace un spike aquí porque SLIM es la dependencia más pesada del plan y no
+> existe ni una línea que la valide.
+
+**Si es tu primera vez con SLIM, lee antes
+[CÓMO FUNCIONA SLIM](COMO-FUNCIONA-SLIM.md).** Explica desde cero qué es el
+bus, qué es una app, qué es una sesión y por qué el salto lateral importa.
+
+---
+
 Resuelve la decisión abierta #1 del `CLAUDE.md`: *"qué runtime de AGNTCY se usa
 y su madurez. Confirmar antes de la Fase A, porque es la dependencia más pesada
 del plan."*
@@ -61,7 +88,8 @@ Terminales 2, 3 y 4, **en este orden** (los que escuchan primero):
 
 ## Lo que se aprendió leyendo el código de AGNTCY
 
-Tres cosas que no estaban en la documentación y cambian el plan.
+Tres cosas que no estaban en la documentación y cambian el plan. El detalle
+conceptual está en [CÓMO FUNCIONA SLIM](COMO-FUNCIONA-SLIM.md).
 
 ### 1. El nodo no necesita contenedor
 
