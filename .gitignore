@@ -10,3 +10,10 @@ __pycache__/
 # Lo escriben vllm-up.sh y nim-up.sh. Lleva la IP del host, que cambia
 # entre instancias, asi que se regenera en vez de viajar en el repo.
 lab/endpoint.env
+
+# Basura de editores. Se me colo un .swp de Vim al repo por usar "git add -A"
+# sin esto; un archivo de swap lleva el buffer completo de quien lo edito.
+*.swp
+*.swo
+*~
+.DS_Store
