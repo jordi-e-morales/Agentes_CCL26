@@ -64,6 +64,36 @@ IMAGEN="${IMAGEN:-nvcr.io/nim/nvidia/nemotron-3-nano:latest}"
 # El id con el que los agentes piden el modelo en la API.
 MODELO="${MODELO:-nvidia/nemotron-3-nano}"
 
+# ---------------------------------------------------------------------------
+# El perfil: NO dejar que NIM elija solo
+# ---------------------------------------------------------------------------
+# Un NIM trae varios "perfiles" (motor + precision + memoria) y escoge uno en
+# cada arranque. Eso es comodo y aqui es un riesgo: el dia del evento tiene que
+# correr lo que se ensayo, no lo que el contenedor decida esa mañana.
+#
+# Lo que reporto ./nim-up.sh --profiles en el L40S de 46 GB (2026-09-19):
+#
+#   vllm-fp8-tp1-pp1-34.0              >=34 GB   <- este
+#   vllm-nvidia-h200-fp8-tp1-pp1-42.0  >=42 GB      deja ~4 GB de KV cache
+#   vllm-bf16-tp1-pp1-80.0             >=63 GB      no cabe
+#
+# Se fija el de 34 GB porque deja ~12 GB para KV cache. El de 42 "cabe", pero
+# dejaria tan poco que el sintoma seria un demo lentisimo sin causa visible,
+# que es la peor forma de fallar en vivo.
+#
+# Dato del reporte que conviene tener presente: TODOS los perfiles ejecutables
+# aqui son "vllm-", y no hay ninguno compilable a TensorRT-LLM. En esta GPU el
+# NIM corre vLLM por dentro. Lo que aporta es empaquetado, licencia y perfiles
+# elegidos, no un motor distinto.
+#
+# Los perfiles NVFP4 quedan fuera: NVFP4 pide Blackwell y el L40S es Ada. Se
+# pueden forzar con NIM_ALLOW_NVFP4_EMULATION=1, pero eso es emulacion sin
+# validar y no tiene lugar en un demo.
+#
+# El hash pertenece a ESTA version de la imagen. Si cambias el tag, vuelve a
+# correr --profiles y actualiza esto.
+PERFIL="${PERFIL:-8c91cce84b9b032ff4af489cb1a20395e223af35623010df9155390ab2284b7a}"
+
 # Cache de pesos. Vive fuera del contenedor a proposito: sin esto, cada
 # reinicio vuelve a descargar decenas de GB, y el modo stand pide reiniciar en
 # menos de 10 segundos entre visitantes.
@@ -154,6 +184,8 @@ else
   ngc_login
 
   log "Levantando el NIM con $MODELO"
+  echo "Perfil fijado: $PERFIL"
+  echo "(vllm-fp8-tp1-pp1-34.0 segun --profiles; ~12 GB libres para KV cache)"
   echo "La primera vez descarga el modelo (decenas de GB) y compila el perfil"
   echo "para esta GPU. Puede tardar bastante. Las siguientes veces no: se queda"
   echo "en $CACHE"
@@ -167,6 +199,7 @@ else
     --shm-size=16GB \
     --restart unless-stopped \
     -e NGC_API_KEY \
+    -e NIM_MODEL_PROFILE="$PERFIL" \
     -v "$CACHE:/opt/nim/.cache" \
     -p "${PUERTO}:8000" \
     "$IMAGEN"

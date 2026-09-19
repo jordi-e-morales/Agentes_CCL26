@@ -65,18 +65,40 @@ y engorda `tokens.completion` —lo que hace visible la atribución de costos de
 segmento 5— pero sube la latencia, y la regla de abandono del guion es de 60
 segundos.
 
-### Una duda abierta sobre el NIM en esta GPU
+### El NIM en esta GPU: resuelto, y con un hallazgo
 
-Las fuentes no coinciden. El model card del FP8 en Hugging Face solo lista H100
-y A100; la matriz de soporte de NIM sí incluye L40S. Puede que ambas sean
-ciertas, porque NIM compila perfiles por GPU y cubre más hardware que la lista
-probada del model card.
-
-En vez de adivinar, pregúntale al contenedor:
+Las fuentes no coincidian —el model card del FP8 solo listaba H100 y A100, la
+matriz de soporte de NIM si incluia L40S— asi que se le pregunto al contenedor:
 
 ```bash
-./nim-up.sh --profiles
+./lab/nim-up.sh --profiles
 ```
+
+**El L40S esta soportado.** Y el reporte trajo algo que no se veia en ninguna
+documentacion: todos los perfiles ejecutables aqui empiezan con `vllm-`, y
+ninguno es compilable a TensorRT-LLM. **En esta GPU el NIM corre vLLM por
+dentro.**
+
+Eso no lo invalida, pero recalibra que se esta comprando: no es un motor mas
+rapido, es el mismo motor empaquetado, licenciado bajo NVIDIA AI Enterprise y
+con los perfiles ya elegidos. La ganancia es de narrativa y de
+reproducibilidad. Conviene tenerlo claro antes de contarlo en la sesion.
+
+| Perfil | Pide | En 46 GB |
+|---|---|---|
+| `vllm-fp8-tp1-pp1-34.0` | ≥34 GB | Sí, deja ~12 GB de KV cache |
+| `vllm-nvidia-h200-fp8-tp1-pp1-42.0` | ≥42 GB | Apenas, deja ~4 GB |
+| `vllm-bf16-tp1-pp1-80.0` | ≥63 GB | No cabe |
+
+`nim-up.sh` **fija** el primero con `NIM_MODEL_PROFILE`. NIM elige perfil solo
+en cada arranque, y si un dia eligiera el de 42 GB el sintoma seria un demo
+lentisimo sin causa visible — la peor forma de fallar en vivo.
+
+El hash del perfil pertenece a esa version de la imagen. Si cambias el tag,
+vuelve a correr `--profiles` y actualiza el valor en el script.
+
+Consecuencia para el `CLAUDE.md` §12: con 34 GB ocupados por un solo modelo,
+**no caben dos tiers en esta GPU**. Esa decision abierta la cierra el hardware.
 
 ## Tres cosas que no son obvias
 
