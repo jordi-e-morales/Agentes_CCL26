@@ -1,0 +1,139 @@
+# Control de RED (Cilium): quien puede hablar con quien, y para pedir que.
+#
+# LO QUE ESTAS POLITICAS DEMUESTRAN, Y LO QUE NO
+# ----------------------------------------------
+# Demuestran dos cosas distintas, y la segunda es la incomoda:
+#
+#   1. Cilium SI distingue metodo y ruta. Un agente puede hacer POST /mcp y
+#      nada mas: cualquier otra ruta se corta con 403. Eso es capa 7 de verdad.
+#
+#   2. Cilium NO puede ver QUE HERRAMIENTA se llamo. Las cinco viven detras de
+#      la misma ruta, porque MCP multiplexa sobre JSON-RPC. consulta_historial
+#      y dispone_caso son, para la red, la misma peticion.
+#
+# El insight #3 del CLAUDE.md dice que la politica tiene que ser sobre la
+# intencion del mensaje y no sobre el par origen-destino. Esto lo extiende:
+# incluso la capa 7 se queda corta si el protocolo multiplexa.
+#
+# CILIUM NO INSPECCIONA PROMPTS. Hace politica L7 sobre metodo y ruta. La
+# deteccion de inyeccion es analisis de contenido y es otra capa. Nunca
+# mezclarlas (CLAUDE.md §6, regla de honestidad).
+#
+# ALCANCE: en Cilium, un pod seleccionado por alguna politica pasa a denegar por
+# omision en esa direccion. Los que no se seleccionan siguen abiertos. Por eso
+# aqui se nombran solo tres grupos, y el Collector se queda sin restringir.
+#
+# Aplicar / quitar:
+#   kubectl apply  -f seguridad/cilium-l7.yaml
+#   kubectl delete -f seguridad/cilium-l7.yaml
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: agentes-salida
+  namespace: agentes
+spec:
+  endpointSelector:
+    matchLabels:
+      rol: agente
+  egress:
+    # DNS PRIMERO. Con denegacion por omision, sin esta regla no se resuelve
+    # ningun nombre y todo lo demas falla con errores que no apuntan a la
+    # politica. Es el error clasico al escribir la primera CiliumNetworkPolicy.
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - {port: "53", protocol: UDP}
+          rules:
+            dns:
+              - matchPattern: "*"
+
+    # LA ARISTA AUTORIZADA. Solo POST /mcp, solo hacia el servidor de
+    # herramientas. Cualquier otro metodo o ruta se corta con 403.
+    #
+    # Y aqui esta el limite: las CINCO herramientas viajan por esta misma
+    # regla. La red no puede distinguir una consulta de una disposicion.
+    - toEndpoints:
+        - matchLabels:
+            app: servidor-mcp
+      toPorts:
+        - ports:
+            - {port: "9000", protocol: TCP}
+          rules:
+            http:
+              - method: "POST"
+                path: "/mcp"
+
+    # El motor de inferencia vive FUERA del cluster, en el host. "host" es la
+    # entidad de Cilium para el nodo local; sin esto el agente no alcanza vLLM.
+    - toEntities:
+        - host
+      toPorts:
+        - ports:
+            - {port: "8000", protocol: TCP}
+
+  # NO hay regla hacia postgres. Esa omision es deliberada y es el demo: el
+  # agente NO puede ir directo a la base. Tiene que pasar por la herramienta.
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: servidor-mcp-aristas
+  namespace: agentes
+spec:
+  endpointSelector:
+    matchLabels:
+      app: servidor-mcp
+  ingress:
+    # Solo los agentes le hablan, y solo con POST /mcp.
+    - fromEndpoints:
+        - matchLabels:
+            rol: agente
+      toPorts:
+        - ports:
+            - {port: "9000", protocol: TCP}
+          rules:
+            http:
+              - method: "POST"
+                path: "/mcp"
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.kubernetes.pod.namespace: kube-system
+            k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - {port: "53", protocol: UDP}
+          rules:
+            dns:
+              - matchPattern: "*"
+    # ESTE si puede hablar con la base. Es el unico.
+    - toEndpoints:
+        - matchLabels:
+            app: postgres
+      toPorts:
+        - ports:
+            - {port: "5432", protocol: TCP}
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: postgres-solo-herramientas
+  namespace: agentes
+spec:
+  endpointSelector:
+    matchLabels:
+      app: postgres
+  ingress:
+    # La regla que hace visible el intento del agente comprometido: si alguien
+    # que no sea el servidor de herramientas toca el 5432, no pasa, y Hubble lo
+    # registra aunque nadie emita una traza confesandolo.
+    - fromEndpoints:
+        - matchLabels:
+            app: servidor-mcp
+      toPorts:
+        - ports:
+            - {port: "5432", protocol: TCP}
