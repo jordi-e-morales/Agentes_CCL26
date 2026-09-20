@@ -1,0 +1,121 @@
+# PostgreSQL: la fuente de la evidencia.
+#
+# POR QUE UNA BASE DE DATOS Y NO UN JSON
+# --------------------------------------
+# Un JSON devuelto no demuestra nada: la sala ve texto aparecer y tiene que
+# creerte. Una base real da tres cosas que no se pueden fingir:
+#
+#   1. La consulta es visible. Puedes enseñar el SQL que emitio la herramienta.
+#   2. Un SELECT y un UPDATE se distinguen a simple vista. Esa es la diferencia
+#      entre leer evidencia y cambiar el expediente, y ahora es literal.
+#   3. dispone_caso pasa a ser una escritura que CAMBIA UNA FILA en pantalla.
+#
+# POR QUE UN POD APARTE Y NO SQLITE
+# ---------------------------------
+# SQLite seria un archivo dentro del pod: no hay arista, no hay nada que
+# gobernar. Un pod aparte es una ARISTA QUE CILIUM PUEDE GOBERNAR:
+#
+#     el servidor MCP puede hablar con la base;  los agentes NO.
+#
+# Cuando el agente comprometido lo intente directo, Cilium lo corta y Hubble lo
+# ve, aunque el agente no emita ninguna traza confesandolo. Eso es la "ausencia"
+# de la que habla el CLAUDE.md seccion 5.
+#
+# SIN ALMACENAMIENTO PERSISTENTE, A PROPOSITO
+# -------------------------------------------
+# PGDATA va en un emptyDir, y el esquema mas la semilla se montan en
+# /docker-entrypoint-initdb.d/. La imagen de Postgres corre esos scripts solo
+# cuando el directorio de datos esta vacio, o sea EN CADA POD NUEVO.
+#
+# Consecuencia: la base siempre nace igual, el estado es deterministico, y
+# "reiniciar entre visitantes" es borrar el pod. Nada que respaldar, nada que
+# limpiar, nada que se corrompa a medio dia de stand.
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: agentes
+---
+# Credencial de LABORATORIO. Datos sinteticos, entorno desechable, sin nada
+# real detras. Se deja a la vista a proposito para que nadie la confunda con
+# una credencial de verdad ni la reutilice en otro sitio.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-lab
+  namespace: agentes
+stringData:
+  POSTGRES_DB: triage
+  POSTGRES_USER: triage
+  POSTGRES_PASSWORD: lab-desechable-no-usar-en-serio
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: agentes
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+        # OJO: rol=datos, NO rol=agente.
+        #
+        # La TracingPolicy de Tetragon mata cualquier exec desde pods con
+        # rol=agente. Postgres lanza procesos hijos constantemente (es parte de
+        # su arquitectura), asi que con esa etiqueta no arrancaria.
+        #
+        # Que la politica sea tan sencilla de razonar -"los agentes no ejecutan
+        # binarios, punto"- es justo lo que la hace defendible en vivo.
+        rol: datos
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:17-alpine
+          envFrom:
+            - secretRef:
+                name: postgres-lab
+          ports:
+            - containerPort: 5432
+              name: postgres
+          volumeMounts:
+            # Los .sql se ejecutan en orden alfabetico al crear la base:
+            # 01-esquema.sql y despues 02-semilla.sql.
+            - name: arranque
+              mountPath: /docker-entrypoint-initdb.d
+              readOnly: true
+            - name: datos
+              mountPath: /var/lib/postgresql/data
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "triage", "-d", "triage"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            requests: {memory: 128Mi, cpu: 50m}
+            limits:   {memory: 512Mi}
+      volumes:
+        - name: arranque
+          configMap:
+            name: postgres-arranque   # la crea datos/postgres-up.sh desde los .sql
+        - name: datos
+          emptyDir: {}                # sin persistencia: ver la nota de arriba
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: agentes
+spec:
+  selector:
+    app: postgres
+  ports:
+    - port: 5432
+      targetPort: postgres
+  # ClusterIP: solo alcanzable desde dentro del cluster. Para llegar desde el
+  # host durante el desarrollo se usa kubectl port-forward (ver el README).
+  type: ClusterIP
