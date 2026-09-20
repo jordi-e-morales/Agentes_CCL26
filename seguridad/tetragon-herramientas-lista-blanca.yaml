@@ -56,8 +56,15 @@ spec:
             - operator: "In"
               values:
                 - "/usr/local/bin/python3.13"   # el interprete de la imagen
-                - "/bin/dash"                   # lo que /bin/sh resuelve
+                # /bin/sh es un enlace a dash, y /bin a /usr/bin. Se listan las
+                # cuatro variantes porque MEDIDO el 2026-09-20: matchBinaries
+                # casa con la ruta resuelta (/usr/bin/dash) pero el evento
+                # reporta la que se uso al ejecutar (/bin/sh). Listarlas todas
+                # cuesta nada y evita depender de cual de las dos mira Tetragon.
+                - "/bin/dash"
                 - "/usr/bin/dash"
+                - "/bin/sh"
+                - "/usr/bin/sh"
           matchArgs:
             - index: 0
               operator: "NotEqual"

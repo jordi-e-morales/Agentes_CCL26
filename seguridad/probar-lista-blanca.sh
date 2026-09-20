@@ -22,6 +22,22 @@ comprobar() {
   else echo "  FALLA $1: esperaba $2, obtuve $3"; fallas=$((fallas+1)); fi
 }
 
+# Un proceso muerto por SIGKILL se reporta de DOS formas distintas, y las dos
+# son correctas:
+#
+#   -9   lo dice Python cuando ejecuta el binario directamente
+#   137  lo dice el shell (128 + 9) cuando el muerto fue SU hijo
+#
+# Con `sh -c "algo"` el shell sobrevive al SIGKILL de su hijo y reporta 137.
+# Esperar solo -9 daba un falso fallo cuando la politica SI habia actuado.
+murio_por_sigkill() {
+  if [ "$2" = "-9" ] || [ "$2" = "137" ]; then
+    echo "  ok    $1  (=$2, SIGKILL)"
+  else
+    echo "  FALLA $1: esperaba -9 o 137 (SIGKILL), obtuve $2"; fallas=$((fallas+1))
+  fi
+}
+
 echo ""
 echo "=== 0. La politica esta aplicada?"
 if kubectl -n "$NS" get tracingpolicynamespaced herramientas-lista-blanca >/dev/null 2>&1; then
@@ -42,8 +58,13 @@ fi
 # ---------------------------------------------------------------------------
 echo ""
 echo "=== 1. Las rutas reales dentro del pod"
+# Las dos sondas ejecutan UN SOLO binario cada una, lanzado por el runtime del
+# contenedor. Eso importa: la primera version preguntaba con
+# `sh -c 'readlink ...'`, y `readlink` no esta en la lista blanca, asi que la
+# politica mataba la propia sonda y devolvia vacio. Un recordatorio util de que
+# la lista blanca es de verdad.
 SH_REAL=$(kubectl -n "$NS" exec deploy/servidor-mcp -- readlink -f /bin/sh 2>/dev/null)
-PY_REAL=$(kubectl -n "$NS" exec deploy/servidor-mcp -- sh -c 'readlink -f "$(command -v python3)"' 2>/dev/null)
+PY_REAL=$(kubectl -n "$NS" exec deploy/servidor-mcp -- python3 -c 'import sys;print(sys.executable)' 2>/dev/null)
 echo "  /bin/sh resuelve a:  $SH_REAL"
 echo "  python3 resuelve a:  $PY_REAL"
 
@@ -74,7 +95,7 @@ echo ""
 echo "=== 3. Lo NO AUTORIZADO: otro binario desde el mismo pod"
 ATAQUE='import subprocess;print(subprocess.run(["/bin/sh","-c","id"]).returncode)'
 salida=$(kubectl -n "$NS" exec deploy/servidor-mcp -- python3 -c "$ATAQUE" 2>&1 | tail -1)
-comprobar "el binario no autorizado muere" "-9" "$salida"
+murio_por_sigkill "el binario no autorizado muere" "$salida"
 
 echo ""
 echo "=== 4. El servidor sigue vivo (murio el hijo, no el servicio)"
