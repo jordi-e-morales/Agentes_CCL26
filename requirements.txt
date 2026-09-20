@@ -13,7 +13,12 @@
 
 openai
 
-# El spike de SLIM (spike-slim/). Es el transporte de la malla: paquete oficial
+# El puente de herramientas (spike-mcp/). SDK oficial de MCP: trae servidor y
+# cliente. Version 2.x, que NO es compatible con los ejemplos de la 1.x.
+mcp
+
+# El spike de SLIM (spike-slim/). Descartado como transporte (CLAUDE.md §3),
+# se conserva por lo aprendido. Es el transporte de la malla: paquete oficial
 # de AGNTCY, trae el nodo embebido en Rust ademas de las bindings de Python.
 # Se instala aqui porque el spike decide si SLIM entra al proyecto o no.
 slim-bindings
