@@ -1,0 +1,61 @@
+# El servidor MCP dentro del cluster.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: servidor-mcp
+  namespace: agentes
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: servidor-mcp
+  template:
+    metadata:
+      labels:
+        app: servidor-mcp
+        # rol=herramientas, ni agente ni datos.
+        #
+        # Es una distincion con consecuencias: la TracingPolicy de la demo v1
+        # mata CUALQUIER exec desde pods con rol=agente, y este pod SI necesita
+        # ejecutar un proceso (exporta_evidencia). Con esa etiqueta no
+        # funcionaria.
+        #
+        # Por eso el control sobre este pod tiene que ser una politica
+        # distinta: lista blanca de que binario puede ejecutar, no prohibicion
+        # total. Es lo que pide el CLAUDE.md §4.
+        rol: herramientas
+    spec:
+      containers:
+        - name: servidor
+          image: ccl26/servidor-mcp:dev
+          # Never: la imagen se mete al cluster con `kind load`, no se baja de
+          # ningun registro. Sin esto, kind intentaria buscarla fuera y fallaria.
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 9000
+              name: mcp
+          env:
+            - name: PGHOST
+              value: postgres.agentes.svc.cluster.local
+            - name: PGPORT
+              value: "5432"
+          envFrom:
+            - secretRef:
+                name: postgres-lab
+          resources:
+            requests: {memory: 128Mi, cpu: 50m}
+            limits:   {memory: 512Mi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: servidor-mcp
+  namespace: agentes
+spec:
+  selector:
+    app: servidor-mcp
+  ports:
+    - port: 9000
+      targetPort: mcp
+  type: ClusterIP

@@ -79,11 +79,24 @@ Regla de honestidad del §6: lo sustituido se etiqueta.
 Si Tetragon está activo y esto corre desde un pod con `rol: agente`, devuelve
 código `-9`: el proceso murió por SIGKILL **antes de ejecutarse**.
 
-## Dónde corre hoy, y dónde tiene que correr
+## Dónde corre
 
-Hoy en el host, alcanzando Postgres por `port-forward`. Para el demo tiene que
-ser **un pod del cluster**: solo así Cilium puede gobernar las dos aristas que
-importan.
+**Como pod del cluster**, que es el único sitio donde sirve para el demo:
+Cilium solo gobierna aristas que atraviesan el cluster, y Tetragon solo ve los
+`exec` que ocurren dentro de él.
+
+```bash
+./herramientas/servidor-up.sh
+```
+
+Compila la imagen, la mete al cluster con `kind load` y despliega. **Ese `kind
+load` es el paso que se olvida siempre**: kind corre sus nodos como
+contenedores con su propio almacén de imágenes, así que una imagen recién
+compilada en el host no existe para el cluster. El síntoma es un pod en
+`ErrImagePull` buscando en Docker Hub algo que está a diez centímetros.
+
+Para desarrollar sigue valiendo correrlo en el host con `port-forward`, pero
+entonces las dos aristas no existen y no hay nada que gobernar.
 
 ```
 agente  ──►  servidor MCP  ──►  postgres
