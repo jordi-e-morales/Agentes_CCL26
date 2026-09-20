@@ -33,6 +33,13 @@ esac
 command -v kubectl >/dev/null || { echo "Falta kubectl: corre ./lab/bootstrap.sh"; exit 1; }
 kubectl get nodes >/dev/null 2>&1 || { echo "El cluster no responde: corre ./lab/cluster-up.sh"; exit 1; }
 
+# El namespace va PRIMERO. El ConfigMap vive dentro de el, asi que crearlo
+# antes fallaba con "namespaces agentes not found": el namespace nace en el
+# YAML, que se aplica mas abajo. Se crea aqui de forma idempotente.
+log "Namespace"
+kubectl create namespace "$NS" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+echo "  $NS listo"
+
 # ---------------------------------------------------------------------------
 # El ConfigMap se GENERA desde los .sql, no se escribe a mano.
 #
