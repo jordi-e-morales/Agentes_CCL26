@@ -55,7 +55,13 @@ spec:
         - matchBinaries:
             - operator: "In"
               values:
-                - "/usr/local/bin/python3.13"   # el interprete de la imagen
+                # El interprete, en sus dos nombres. MEDIDO el 2026-09-20:
+                # sys.executable reporta /usr/local/bin/python3, que es un
+                # enlace a python3.13. Cual de los dos mire Tetragon depende de
+                # si resuelve el enlace, asi que se listan ambos. Omitir el que
+                # toque hace que esta rama no dispare, y eso NO AVISA.
+                - "/usr/local/bin/python3"
+                - "/usr/local/bin/python3.13"
                 # /bin/sh es un enlace a dash, y /bin a /usr/bin. Se listan las
                 # cuatro variantes porque MEDIDO el 2026-09-20: matchBinaries
                 # casa con la ruta resuelta (/usr/bin/dash) pero el evento

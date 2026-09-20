@@ -88,14 +88,24 @@ sleep 3
 echo ""
 echo "=== 2. Lo LEGITIMO: el shell del generador de comprobantes"
 LEGITIMO='import subprocess;print(subprocess.run(["/bin/sh","-c","printf hola > /tmp/x"]).returncode)'
-salida=$(kubectl -n "$NS" exec deploy/servidor-mcp -- python3 -c "$LEGITIMO" 2>&1 | tail -1)
+# 2>/dev/null y no 2>&1: cuando el hijo de dash muere por SIGKILL, dash escribe
+# "Killed" en stderr, y mezclarlo con stdout hacia que tail -1 devolviera esa
+# palabra en vez del codigo de retorno que imprime Python.
+salida=$(kubectl -n "$NS" exec deploy/servidor-mcp -- python3 -c "$LEGITIMO" 2>/dev/null | tail -1)
 comprobar "el shell autorizado se ejecuta" "0" "$salida"
 
 echo ""
 echo "=== 3. Lo NO AUTORIZADO: otro binario desde el mismo pod"
 ATAQUE='import subprocess;print(subprocess.run(["/bin/sh","-c","id"]).returncode)'
-salida=$(kubectl -n "$NS" exec deploy/servidor-mcp -- python3 -c "$ATAQUE" 2>&1 | tail -1)
-murio_por_sigkill "el binario no autorizado muere" "$salida"
+salida=$(kubectl -n "$NS" exec deploy/servidor-mcp -- python3 -c "$ATAQUE" 2>/dev/null | tail -1)
+murio_por_sigkill "por shell: el binario no autorizado muere" "$salida"
+
+# La rama de PYTHON, que hasta ahora no se habia ejercitado nunca. El ataque
+# real va por el shell, pero si esta no dispara, la politica tiene un hueco por
+# donde un agente comprometido podria ejecutar sin pasar por sh.
+DIRECTO='import subprocess;print(subprocess.run(["/usr/bin/id"]).returncode)'
+salida=$(kubectl -n "$NS" exec deploy/servidor-mcp -- python3 -c "$DIRECTO" 2>/dev/null | tail -1)
+murio_por_sigkill "por python directo: tambien muere" "$salida"
 
 echo ""
 echo "=== 4. El servidor sigue vivo (murio el hijo, no el servicio)"
