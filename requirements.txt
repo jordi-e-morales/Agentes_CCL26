@@ -13,6 +13,10 @@
 
 openai
 
+# Cliente de PostgreSQL para el servidor de herramientas (herramientas/).
+# psycopg 3, con [binary] para no compilar nada en el host.
+psycopg[binary]
+
 # El puente de herramientas (spike-mcp/). SDK oficial de MCP: trae servidor y
 # cliente. Version 2.x, que NO es compatible con los ejemplos de la 1.x.
 mcp
