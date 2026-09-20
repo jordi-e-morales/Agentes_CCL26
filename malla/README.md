@@ -16,11 +16,11 @@ kubectl -n agentes port-forward deploy/servidor-mcp 9000:9000
 ```
 
 ```bash
-.venv/bin/python malla/agente.py --rol investigador --puerto 7000
+.venv/bin/python malla/agente.py --rol investigador --puerto 7010
 ```
 
 ```bash
-.venv/bin/python malla/agente.py --rol defensor --puerto 7001
+.venv/bin/python malla/agente.py --rol defensor --puerto 7011
 ```
 
 ```bash

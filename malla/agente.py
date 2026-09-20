@@ -30,9 +30,13 @@ mensajes en medio no podria: veria "agente -> bus" y nada mas.
 
 Uso:
     .venv/bin/python malla/agente.py --rol investigador
-    .venv/bin/python malla/agente.py --rol defensor --puerto 7001
+    .venv/bin/python malla/agente.py --rol defensor --puerto 7011
 """
 
+# Los puertos por omision son 7010 y 7011, no 7000/7001: el 7000 esta peleado
+# (AFS, herramientas de desarrollo) y choco en dos maquinas distintas el mismo
+# dia. El sintoma es "address already in use", que no dice nada sobre quien lo
+# tiene. Para averiguarlo:  ss -ltnp | grep ':7010'
 import argparse
 import asyncio
 import json
@@ -224,7 +228,7 @@ class Agente:
         # el mismo significado; tenerla con dos sentidos distintos en dos
         # archivos habria fallado justo al pasar al cluster, y con un error que
         # parece de red.
-        base = os.getenv(f"URL_{vecino.upper()}", "http://localhost:7001")
+        base = os.getenv(f"URL_{vecino.upper()}", "http://localhost:7011")
         url = f"{base.rstrip('/')}/a2a"
         peticion = mensaje_a2a(
             f"Un colega sostiene lo siguiente. Objetalo si puedes:\n\n{texto}"
@@ -288,7 +292,7 @@ def construir(rol: str, url_mcp: str) -> Starlette:
 def main():
     p = argparse.ArgumentParser(description="Un agente de la malla (A2A + MCP)")
     p.add_argument("--rol", required=True, choices=sorted(ROLES))
-    p.add_argument("--puerto", type=int, default=7000)
+    p.add_argument("--puerto", type=int, default=7010)
     p.add_argument("--mcp", default=os.getenv("URL_MCP", "http://localhost:9000/mcp"))
     a = p.parse_args()
 

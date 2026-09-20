@@ -34,8 +34,8 @@ import urllib.request
 # En el cluster son nombres de Service; en el host, localhost. Por eso se leen
 # del entorno y no estan escritos a fuego.
 AGENTES = {
-    "investigador": os.getenv("URL_INVESTIGADOR", "http://localhost:7000"),
-    "defensor": os.getenv("URL_DEFENSOR", "http://localhost:7001"),
+    "investigador": os.getenv("URL_INVESTIGADOR", "http://localhost:7010"),
+    "defensor": os.getenv("URL_DEFENSOR", "http://localhost:7011"),
 }
 
 
