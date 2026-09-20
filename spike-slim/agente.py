@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Los tres papeles del spike: router, agente-a y agente-b.
+"""Los tres papeles del spike: router-tareas, agente-a y agente-b.
 
 QUE TIENE QUE DEMOSTRAR ESTE SPIKE
 ----------------------------------
@@ -11,13 +11,13 @@ confirmarla ANTES de la Fase A. Tambien dice, en la seccion 3:
 
 Asi que el criterio de exito no es "se mandan mensajes". Es este flujo:
 
-    router  --(1) tarea-->  agente-a
-                            agente-a  --(2) consulta-->  agente-b     <-- SALTO LATERAL
-                            agente-a  <--(3) respuesta--  agente-b
-    router  <--(4) resultado--  agente-a
+    router-tareas  --(1) tarea-->  agente-a
+                                   agente-a  --(2) consulta-->  agente-b   <-- SALTO LATERAL
+                                   agente-a  <--(3) respuesta--  agente-b
+    router-tareas  <--(4) resultado--  agente-a
 
-El paso 2 es el que importa. El router NO participa en esa conversacion: no la
-media, no la ve, no la reenvia. agente-a abre su propia sesion con agente-b.
+El paso 2 es el que importa. router-tareas NO participa en esa conversacion: no
+la media, no la ve, no la reenvia. agente-a abre su propia sesion con agente-b.
 
 UNA PRECISION DE HONESTIDAD, IMPORTANTE PARA EL SEGMENTO 3
 ----------------------------------------------------------
@@ -25,13 +25,19 @@ UNA PRECISION DE HONESTIDAD, IMPORTANTE PARA EL SEGMENTO 3
 APLICACION, no sobre el camino de los paquetes.
 
 En SLIM todos los mensajes atraviesan fisicamente el nodo, porque el nodo ES el
-bus. Lo que el salto lateral demuestra es que agente-a y agente-b se hablan
-como iguales, sin que el router orqueste la conversacion. Eso es lo que separa
-una malla de una estrella, y es una propiedad real y valiosa.
+bus. La propia documentacion de SLIM lo dice con la frase exacta que hace falta:
+
+    "SLIM routing nodes only forward messages and don't participate in
+     application sessions."
+
+Reenvia, pero NO participa. Lo que el salto lateral demuestra es que agente-a y
+agente-b se hablan como iguales, sin que router-tareas orqueste la
+conversacion. Eso es lo que separa una malla de una estrella, y es real.
 
 Pero en la sesion NO se puede decir "el trafico no pasa por el centro", porque
-si pasa. Se dice: "el router no participa en esta conversacion". La diferencia
-importa y el CLAUDE.md seccion 6 es explicito sobre no afirmar de mas.
+si pasa. Se dice: "router-tareas no participa en esta conversacion". La
+diferencia importa y el CLAUDE.md seccion 6 es explicito sobre no afirmar de
+mas. Ver arquitectura/capas-de-control.md.
 
 Uso (tres terminales, mas la del nodo):
     .venv/bin/python spike-slim/agente.py --rol b
@@ -126,22 +132,22 @@ async def abrir_sesion(app, conn_id, destino: str):
 
 
 # ---------------------------------------------------------------------------
-# ROL: router. Manda la tarea a agente-a y espera el resultado.
+# ROL: router-tareas. Manda la tarea a agente-a y espera el resultado.
 # ---------------------------------------------------------------------------
 async def rol_router(nodo: str):
     app, conn_id = await conectar(ROUTER, nodo)
     sesion = await abrir_sesion(app, conn_id, AGENTE_A)
 
-    traza("router", f"-> agente-a: tarea ALR-FICTICIA-0001")
+    traza("router-tareas", "-> agente-a: tarea ALR-FICTICIA-0001")
     await sesion.publish_async(b"tarea:ALR-FICTICIA-0001", None, None)
 
     msg = await sesion.get_message_async(timeout=ESPERA)
-    traza("router", f"<- agente-a: {msg.payload.decode()}")
+    traza("router-tareas", f"<- agente-a: {msg.payload.decode()}")
 
     print()
     print("=" * 66)
     print("SPIKE SUPERADO si arriba se ve que agente-a hablo con agente-b")
-    print("sin que el router interviniera en esa conversacion.")
+    print("sin que router-tareas interviniera en esa conversacion.")
     print("=" * 66)
 
 
@@ -150,20 +156,20 @@ async def rol_router(nodo: str):
 # ---------------------------------------------------------------------------
 async def rol_a(nodo: str):
     app, conn_id = await conectar(AGENTE_A, nodo)
-    traza("agente-a", "esperando al router...")
+    traza("agente-a", "esperando a router-tareas...")
 
     sesion_router = await app.listen_for_session_async(None)
     msg = await sesion_router.get_message_async(timeout=ESPERA)
     tarea = msg.payload.decode()
-    traza("agente-a", f"<- router: {tarea}")
+    traza("agente-a", f"<- router-tareas: {tarea}")
 
     # ---- EL SALTO LATERAL ----
-    # agente-a abre SU PROPIA sesion con agente-b. El router no participa.
+    # agente-a abre SU PROPIA sesion con agente-b. router-tareas no participa.
     traza("agente-a", "SALTO LATERAL: abriendo sesion propia con agente-b")
     sesion_b = await abrir_sesion(app, conn_id, AGENTE_B)
 
     await sesion_b.publish_async(f"consulta:{tarea}".encode(), None, None)
-    traza("agente-a", "-> agente-b: consulta enviada (el router no la ve)")
+    traza("agente-a", "-> agente-b: consulta enviada (router-tareas no la ve)")
 
     respuesta_b = await sesion_b.get_message_async(timeout=ESPERA)
     traza("agente-a", f"<- agente-b: {respuesta_b.payload.decode()}")
@@ -174,11 +180,11 @@ async def rol_a(nodo: str):
         None,
         None,
     )
-    traza("agente-a", "-> router: resultado")
+    traza("agente-a", "-> router-tareas: resultado")
 
 
 # ---------------------------------------------------------------------------
-# ROL: agente-b. Solo escucha y contesta. Nunca habla con el router.
+# ROL: agente-b. Solo escucha y contesta. Nunca habla con router-tareas.
 # ---------------------------------------------------------------------------
 async def rol_b(nodo: str):
     app, _ = await conectar(AGENTE_B, nodo)
@@ -186,7 +192,7 @@ async def rol_b(nodo: str):
 
     sesion = await app.listen_for_session_async(None)
     msg = await sesion.get_message_async(timeout=ESPERA)
-    traza("agente-b", f"<- {msg.payload.decode()}  (viene de agente-a, no del router)")
+    traza("agente-b", f"<- {msg.payload.decode()}  (viene de agente-a, no de router-tareas)")
 
     await sesion.publish_async(b"evidencia-b:sin-coincidencias", None, None)
     traza("agente-b", "-> respuesta enviada")
