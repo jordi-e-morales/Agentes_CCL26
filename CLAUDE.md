@@ -373,7 +373,7 @@ propio plan ya había decidido de antemano qué sobrevive.
 | B | Servidor MCP con las cinco tools | **Hecho y probado** de punta a punta (`herramientas/`) |
 | C | Router por tarea y dos agentes con A2A, con salto lateral | Pendiente. El puente ya está escrito (`spike-mcp/agente.py`) |
 | D | Agent Cards y registro OASF | Un JSON |
-| E | Cilium L7 y Tetragon (portadas de v1) | Escritas, sin correr |
+| E | Cilium L7 y Tetragon | **Hechas y verificadas** sobre el ejecutor real (`seguridad/`) |
 | F | Tokens en pantalla | Barato |
 | G | **Best effort:** OTel → Splunk, AI Defense | Si sobra tiempo |
 
