@@ -1,0 +1,34 @@
+{
+  "name": "agente-investigador",
+  "description": "Sostiene que la alerta tiene riesgo. Recoge evidencia antes de opinar y cita lo que encontro.",
+  "version": "1.0.0",
+  "supportedInterfaces": [
+    {
+      "protocolBinding": "JSONRPC",
+      "protocolVersion": "0.3.0",
+      "url": "http://agente-investigador.agentes.svc.cluster.local:7000/a2a"
+    }
+  ],
+  "defaultInputModes": [
+    "text/plain"
+  ],
+  "defaultOutputModes": [
+    "text/plain"
+  ],
+  "capabilities": {
+    "streaming": false,
+    "pushNotifications": false
+  },
+  "skills": [
+    {
+      "id": "argumentar-riesgo",
+      "name": "Argumentar riesgo",
+      "description": "Revisa historial, perfil y listas, y sostiene por que la alerta merece escalarse.",
+      "tags": [
+        "triage",
+        "evidencia",
+        "riesgo"
+      ]
+    }
+  ]
+}

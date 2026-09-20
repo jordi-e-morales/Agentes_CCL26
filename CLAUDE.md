@@ -273,6 +273,25 @@ dibuja lo que de verdad pasó, no con un editor visual, que dibuja lo que
 alguien diseñó. En una sesión sobre observabilidad y control, un diagrama de
 diseño es casi una contradicción.
 
+### Reglas de la interfaz, no negociables
+
+La razón de ser de la v2 frente a la v1 es **ser más didáctica**. La v1 obliga a
+abstraer un montón para entender qué pasa. De ahí salen tres reglas:
+
+1. **Si el presentador no sabe explicar un visual en una frase, no va.** Sin
+   excepciones. Un panel que obliga a la sala —o a quien narra— a alinear dos
+   columnas mentalmente, no se entiende aunque sea correcto. (Esto descartó el
+   panel de dos carriles de la v1, ya construido: la idea de fondo es buena,
+   la presentación hace trabajar al espectador.)
+
+2. **La interfaz hace visible el mecanismo, no lo esconde.** Se enseña el
+   `tool_call` de verdad, el mensaje entre agentes de verdad, y qué permisos
+   tiene cada quien. Una aplicación pulida que oculte la fontanería sería
+   bonita y contraria al propósito.
+
+3. **Lo importante se marca solo.** Si hay que comparar dos cosas, la
+   diferencia se resalta; no se ponen lado a lado para que alguien la busque.
+
 ### Reglas de honestidad, no negociables
 
 - **Cilium NO inspecciona prompts.** Hace política L7 sobre método y ruta. La

@@ -1,0 +1,34 @@
+{
+  "name": "agente-defensor",
+  "description": "Sostiene que la alerta NO tiene riesgo. Busca la explicacion benigna y la respalda con evidencia.",
+  "version": "1.0.0",
+  "supportedInterfaces": [
+    {
+      "protocolBinding": "JSONRPC",
+      "protocolVersion": "0.3.0",
+      "url": "http://agente-defensor.agentes.svc.cluster.local:7000/a2a"
+    }
+  ],
+  "defaultInputModes": [
+    "text/plain"
+  ],
+  "defaultOutputModes": [
+    "text/plain"
+  ],
+  "capabilities": {
+    "streaming": false,
+    "pushNotifications": false
+  },
+  "skills": [
+    {
+      "id": "objetar-riesgo",
+      "name": "Objetar riesgo",
+      "description": "Contrasta el argumento de riesgo y busca la explicacion mas simple.",
+      "tags": [
+        "triage",
+        "evidencia",
+        "contraste"
+      ]
+    }
+  ]
+}

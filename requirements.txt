@@ -13,6 +13,11 @@
 
 openai
 
+# A2A. Se usa SOLO para VALIDAR las Agent Cards, no para generarlas: sus tipos
+# son protobuf y el resultado no se parece a lo que uno escribiria, y esas
+# tarjetas se enseñan en pantalla. Ver malla/valida_tarjetas.py.
+a2a-sdk
+
 # Trazas (observabilidad/). El exportador va por HTTP, que necesita menos
 # dependencias que el de gRPC y le basta al Collector.
 opentelemetry-sdk
