@@ -1,5 +1,59 @@
 # La capa de kernel: el SIGKILL
 
+Hay **dos políticas**, y la diferencia entre ellas es el argumento del
+segmento 6.
+
+| Política | Sobre quién | Regla | Estado |
+|---|---|---|---|
+| `agentes-sin-exec` | `rol: agente` | **Prohibición total.** Un agente no ejecuta binarios, punto | Portada de v1, probada allí |
+| `herramientas-lista-blanca` | `rol: herramientas` | **Lista blanca.** El ejecutor corre el shell del generador y nada más | Nueva, sin correr |
+
+### Por qué dos y no una
+
+El servidor MCP **sí necesita** ejecutar un proceso: eso es exactamente
+`exporta_evidencia`. Prohibirle todo lo dejaría sin funcionar.
+
+Y ahí está la vía del ataque del segmento 6, que es la que pide el
+`CLAUDE.md` §4 — *qué binario puede ejecutar el ejecutor*:
+
+| | La cadena |
+|---|---|
+| 1 | La inyección llega en un fragmento `source_trust: external` |
+| 2 | El agente llama `exporta_evidencia` con un `alerta_id` manipulado |
+| 3 | El shell ejecuta un binario que nadie autorizó |
+| 4 | **Tetragon lo mata:** la lista blanca solo permite el del comprobante |
+
+La inyección de comandos de `exporta_evidencia` **es deliberada y está
+etiquetada como tal** en el código. Si esa función validara su entrada, el demo
+no enseñaría nada: todo el mundo diría *"pues escapa tus argumentos"* y se
+perdería el punto — que el control no puede depender de que cada herramienta
+esté bien escrita.
+
+```bash
+bash seguridad/probar-lista-blanca.sh
+```
+
+### Las dos formas de fallar en silencio
+
+Esta política puede romperse sin avisar, en dos direcciones opuestas:
+
+- **La ruta del shell no está en la lista blanca** → mata también lo legítimo, y
+  `exporta_evidencia` deja de funcionar.
+- **El intérprete no está en `matchBinaries`** → **no dispara nada**, y parece
+  que todo está protegido cuando no hay nada aplicándose. Esta es la peligrosa.
+
+`linux_binprm` reporta rutas **resueltas**, y en Debian `/bin/sh` es un enlace a
+dash. Por eso `probar-lista-blanca.sh` comprueba las rutas reales dentro del pod
+**antes** de sacar ninguna conclusión.
+
+Nota de operadores: para `linux_binprm` valen `Equal`, `NotEqual`, `Prefix`,
+`Postfix` y `SubString`. **`NotIn` no está soportado** — si se usa, la política
+no dispara y no avisa.
+
+---
+
+
+
 Control de ejecución con Tetragon. Es el final del segmento 6 y lo único del
 demo que **mata procesos de verdad**.
 

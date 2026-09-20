@@ -1,0 +1,73 @@
+# Control de KERNEL sobre el EJECUTOR de herramientas: lista blanca de binarios.
+#
+# QUE LA DISTINGUE DE LA OTRA POLITICA
+# ------------------------------------
+# `agentes-sin-exec` es una prohibicion total: los pods con rol=agente no
+# ejecutan NADA. Es simple y se defiende en una frase.
+#
+# Esta es distinta porque el problema es distinto. El servidor MCP SI necesita
+# ejecutar un proceso: eso es exactamente lo que hace `exporta_evidencia`.
+# Prohibirle todo lo dejaria sin funcionar. Asi que aqui la regla es:
+#
+#     puede ejecutar el shell del generador de comprobantes, y NADA MAS.
+#
+# Es lo que pide el CLAUDE.md §4: "que binario puede ejecutar el ejecutor".
+#
+# COMO SE ENGANCHA
+# ----------------
+# En `security_bprm_creds_for_exec`, el punto del kernel donde se autoriza
+# ejecutar un programa. Dos filtros que trabajan juntos:
+#
+#   matchBinaries -> QUIEN ejecuta. Solo nos importan python y el shell.
+#                    Deja fuera el arranque del contenedor, donde quien ejecuta
+#                    es el runtime, no ellos.
+#   matchArgs     -> QUE se intenta ejecutar. NotEqual contra la lista blanca.
+#
+# OJO CON EL OPERADOR: para `linux_binprm` los operadores validos son Equal,
+# NotEqual, Prefix, Postfix y SubString. `NotIn` NO esta soportado aqui. Si se
+# usa, la politica no dispara Y NO AVISA, que es el peor fallo posible en un
+# demo: parece que la seguridad funciona cuando no hay nada aplicandose.
+#
+# OJO CON LAS RUTAS: `linux_binprm` reporta la ruta RESUELTA del archivo. En
+# Debian, /bin/sh es un enlace a dash y /bin es un enlace a /usr/bin, asi que lo
+# que se ve puede ser /usr/bin/dash. Por eso la lista incluye las variantes, y
+# por eso probar-lista-blanca.sh comprueba la ruta real antes de nada.
+#
+# Aplicar / quitar:
+#   kubectl apply  -f seguridad/tetragon-herramientas-lista-blanca.yaml
+#   kubectl delete -f seguridad/tetragon-herramientas-lista-blanca.yaml
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicyNamespaced
+metadata:
+  name: herramientas-lista-blanca
+  namespace: agentes
+spec:
+  podSelector:
+    matchLabels:
+      rol: herramientas
+  kprobes:
+    - call: "security_bprm_creds_for_exec"
+      syscall: false
+      args:
+        - index: 0
+          type: "linux_binprm"
+      selectors:
+        - matchBinaries:
+            - operator: "In"
+              values:
+                - "/usr/local/bin/python3.13"   # el interprete de la imagen
+                - "/bin/dash"                   # lo que /bin/sh resuelve
+                - "/usr/bin/dash"
+          matchArgs:
+            - index: 0
+              operator: "NotEqual"
+              values:
+                # LA LISTA BLANCA. Lo unico que el generador de comprobantes
+                # necesita ejecutar es el shell; `printf` es interno de dash y
+                # no genera un exec propio.
+                - "/bin/sh"
+                - "/usr/bin/sh"
+                - "/bin/dash"
+                - "/usr/bin/dash"
+          matchActions:
+            - action: Sigkill

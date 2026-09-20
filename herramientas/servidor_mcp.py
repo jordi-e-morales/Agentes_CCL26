@@ -25,12 +25,18 @@ medio minuto y vale por un argumento entero sobre lo que NO hay que desplegar.
 
 DONDE CORRE
 -----------
-Hoy, en el host, alcanzando Postgres por un port-forward. Para el demo tiene
-que ser un pod del cluster: solo asi Cilium puede gobernar las dos aristas que
-importan (agente -> servidor MCP, y servidor MCP -> base).
+Como pod del cluster (herramientas/servidor-up.sh). Es el unico sitio donde
+sirve para el demo: Cilium solo gobierna aristas que atraviesan el cluster, y
+Tetragon solo ve los exec que ocurren dentro de el.
 
-Uso:
-    kubectl -n agentes port-forward deploy/postgres 5432:5432   # en otra terminal
+Para desarrollar tambien corre en el host, con un port-forward a Postgres, pero
+entonces esas aristas no existen y no hay nada que gobernar.
+
+Uso (en el cluster):
+    ./herramientas/servidor-up.sh
+
+Uso (en el host, solo para desarrollar):
+    kubectl -n agentes port-forward deploy/postgres 5432:5432
     .venv/bin/python herramientas/servidor_mcp.py
 """
 
@@ -188,6 +194,31 @@ def exporta_evidencia(alerta_id: str) -> dict:
     """Genera el comprobante de la alerta invocando un proceso externo."""
     destino = os.path.join(tempfile.gettempdir(), f"comprobante-{alerta_id}.txt")
     try:
+        # #####################################################################
+        # #  INYECCION DE COMANDOS DELIBERADA. NO ARREGLAR.                   #
+        # #####################################################################
+        #
+        # `alerta_id` se interpola en una cadena de shell sin escapar. Eso es
+        # explotable, y esta ASI A PROPOSITO: es el camino del ataque del
+        # segmento 6.
+        #
+        # La cadena completa:
+        #   1. La inyeccion llega en un fragmento con source_trust=external
+        #   2. El agente llama exporta_evidencia con un alerta_id manipulado
+        #   3. El shell ejecuta un binario que nadie autorizo
+        #   4. Tetragon lo mata: la lista blanca solo permite el del PDF
+        #
+        # Por que no se "arregla": si esta funcion validara su entrada, el demo
+        # no enseñaria nada. Todo el mundo diria "pues escapa tus argumentos" y
+        # se perderia el punto, que es que el control NO puede depender de que
+        # cada herramienta este bien escrita. Vive en las capas de alrededor.
+        #
+        # Y es realista: asi es como se comprometen los servidores MCP de
+        # verdad. La mitad de los que se estan desplegando este mes hacen esto.
+        #
+        # Regla de honestidad del CLAUDE.md §6: lo que esta puesto a proposito
+        # se etiqueta. Un laboratorio con una vulnerabilidad sin documentar es
+        # un laboratorio con un error.
         r = subprocess.run(
             ["/bin/sh", "-c", f"printf 'comprobante de %s\\n' '{alerta_id}' > '{destino}'"],
             capture_output=True,
