@@ -249,6 +249,30 @@ en una frase. **No construir narrativa sobre esto.** Nota técnica: el traductor
 procesa entrada no confiable, así que pertenece a la matriz de permisos como
 cualquier otro componente.
 
+### El meta-argumento: la abstracción cuesta visibilidad
+
+Salió de descartar tres caminos el 2026-09-19, y es el mejor cierre del
+segmento 6 porque nadie lo ve venir:
+
+| Opción evaluada | Qué le hace a la arista entre agentes |
+|---|---|
+| **SLIM** | La **esconde** detrás del bus: Cilium ve `agente → nodo`, no el interlocutor |
+| **MCP** | La deja visible pero **opaca**: `POST /mcp` sin saber qué herramienta se llamó |
+| **CrewAI** (u otro framework en proceso) | La **borra**: los agentes se llaman dentro del mismo proceso. No hay ni paquete |
+
+> Cada capa de abstracción que agregas para construir agentes más rápido le
+> quita visibilidad a quien tiene que gobernarlos.
+
+Es incómodo, es cierto, y es lo que la sala necesita oír. No se presenta como
+crítica a ninguna herramienta: las tres son razonables y resuelven problemas
+reales. El punto es que **la facilidad de construcción y la capacidad de
+gobierno se mueven en direcciones opuestas**, y casi nadie lo está midiendo.
+
+Corolario práctico para el grafo de agentes: se enseña con **Hubble UI**, que
+dibuja lo que de verdad pasó, no con un editor visual, que dibuja lo que
+alguien diseñó. En una sesión sobre observabilidad y control, un diagrama de
+diseño es casi una contradicción.
+
 ### Reglas de honestidad, no negociables
 
 - **Cilium NO inspecciona prompts.** Hace política L7 sobre método y ruta. La
