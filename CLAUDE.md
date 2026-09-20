@@ -7,6 +7,16 @@ decisiones ya se tomaron con motivo.
 Documento de diseño completo (spec de la sesión):
 https://claude.ai/artifact/GDx1dPcdCXQRVTYxp9Wfq5
 
+Dónde está cada cosa en el repo:
+
+| Carpeta | Qué hay |
+|---|---|
+| `lab/` | Instalación reproducible: herramientas, cluster, kernel, motor de inferencia |
+| `esquema/` | El contrato `alerta/sujeto/evidencia`, con casos de los dos dominios |
+| `arquitectura/` | Cómo encajan las capas de control. Empieza por `capas-de-control.md` |
+| `seguridad/` | Las políticas portadas de v1 y su prueba |
+| `spike-slim/` | El transporte que se evaluó y se descartó (§3). Se conserva lo aprendido |
+
 ---
 
 ## 1. Qué construimos
@@ -46,9 +56,9 @@ partes.
 | Segmento | Capa del stack que resalta | Termina con |
 |---|---|---|
 | 1. Un agente no es un modelo | Cómputo acelerado | ¿Cómo se encuentran? |
-| 2. Se descubren y se rutean | AGNTCY | ¿Cómo se hablan? |
-| 3. La malla SLIM | AGNTCY + Kubernetes | ¿De dónde sacan los datos? |
-| 4. Herramientas | Kubernetes | ¿Cómo sé qué pasó? |
+| 2. Se descubren | A2A Agent Cards (+ OASF) | ¿Cómo se hablan? |
+| 3. Se hablan, y la arista es visible | A2A sobre HTTP + Kubernetes | ¿De dónde sacan los datos? |
+| 4. Herramientas por MCP | Kubernetes | ¿Cómo sé qué pasó? |
 | 5. Observabilidad | Splunk | ¿Y si alguien abusa de esto? |
 | 6. Control | Seguridad | Cierre |
 
@@ -61,32 +71,73 @@ haya ejecutado en esa misma corrida.
 ## 3. Arquitectura
 
 ```
-Tarea → Router por tarea → (consulta) Agent Directory (OASF)
-                         → Agente A  <--SLIM-->  Agente B
-                              ↓                      ↓
-                          Tools (evidencia y acción)
+Tarea → Router por tarea → (lee) Agent Cards en /.well-known/agent-card.json
+                         → Agente A  <--A2A sobre HTTP-->  Agente B
+                              ↓                                 ↓
+                         Servidor MCP (las cinco tools)
                               ↓
-                    OTLP → OTel Collector → Splunk APM
+                          PostgreSQL
+                              ↓
+                    usage → tokens en pantalla → (best effort) OTLP → Splunk
 
 Gobernado por: Cilium (L7), Tetragon (kernel), AI Defense (contenido)
 Observado también por: Hubble (segunda fuente independiente)
 ```
 
-- **Router por tarea:** clasifica, consulta el Directory y despacha al agente
-  adecuado.
-- **Agent Directory (OASF):** registros de capacidades; es la fuente del ruteo.
-- **Agentes** sobre vLLM en el L40S de dCloud.
-- **SLIM:** el bus de mensajes de AGNTCY entre agentes. Reemplaza cualquier
-  transporte HTTP casero. Debe existir al menos un **salto lateral** agente a
-  agente sin pasar por el centro: sin eso la malla es una estrella.
-- **Tools:** servicios invocados por function-calling.
-- **OTel Collector → Splunk:** trazas distribuidas de agentes y tools.
+- **Router por tarea:** clasifica, lee los Agent Cards y despacha al agente
+  adecuado. **Es un agente más**, no el centro de la red: es el centro de la
+  lógica.
+- **A2A** entre agentes. Cada agente publica su Agent Card en
+  `/.well-known/agent-card.json` y expone un endpoint HTTP. Debe existir al
+  menos un **salto lateral** agente a agente sin que el router medie: sin eso
+  la malla es una estrella.
+- **MCP** entre agente y herramientas. Un solo servidor con las cinco tools.
+- **PostgreSQL** como fuente de la evidencia, en su propio pod.
+- **Agentes** sobre vLLM en el L40S.
 
----
+### Los dos protocolos, y por qué esa separación importa
+
+> **MCP** es cómo un agente habla con sus **herramientas**.
+> **A2A** es cómo un agente habla con **otro agente**.
+
+Los dos son JSON-RPC sobre un solo endpoint, y de ahí sale la mejor lámina de
+la sesión:
+
+| Protocolo | Cilium **ve** | Cilium **no ve** |
+|---|---|---|
+| A2A | la arista: quién llama a quién | qué le pidió |
+| MCP | la arista al servidor de tools | **qué herramienta llamó** |
+
+A2A además no necesita infraestructura: el Agent Card es un archivo servido en
+una ruta.
+
+### Por qué NO se usa SLIM
+
+Se evaluó y se descartó con motivo, no por falta de tiempo. SLIM convierte
+`agente-a → agente-b` en `agente → nodo SLIM`: todos los mensajes van por gRPC
+al bus, así que **Cilium deja de ver quién le habla a quién**. Eso destruye
+justo la arista que el segmento 3 y el segmento 6 necesitan enseñar.
+
+Con A2A la arista es HTTP directo entre dos pods, visible y gobernable.
+
+Lo averiguado sobre SLIM queda en `arquitectura/capas-de-control.md` y en
+`spike-slim/`, por si un día el transporte vuelve a estar sobre la mesa.
+
+### Por qué el Agent Directory no corre
+
+El Directory de AGNTCY es un chart de Helm con su propia versión de esquema.
+El **registro OASF como archivo**, enseñado al lado del Agent Card, da el 90%
+del mensaje por el 5% del coste. AGNTCY tiene integración oficial de A2A, así
+que decir "A2A dentro de la visión de Internet de los Agentes" es exacto.
 
 ## 4. Herramientas y la acción peligrosa
 
 Las tools no son un extra: son la superficie donde aterriza la seguridad.
+
+**Las cinco viven en un solo servidor MCP.** No se reparten. Un servidor MCP
+con todo dentro es lo que se hace en la realidad, y es justo lo que hace que la
+lección aterrice: `POST /mcp` es una sola ruta que lleva todas tus
+herramientas, incluida la que dispone del caso.
 
 | Tool | Tipo | Para qué |
 |---|---|---|
@@ -103,6 +154,27 @@ vía estructural y creíble.
 **Regla de diseño:** las tools de evidencia deben explicarse solas en tres
 segundos, sin que nadie sepa del dominio. Nombres claros, salidas legibles.
 
+### La evidencia vive en PostgreSQL, no en un JSON
+
+Un JSON devuelto no demuestra nada: la sala ve texto aparecer y tiene que
+creerte. Una base de datos real da tres cosas que no se pueden fingir: la
+consulta es visible, un `SELECT` y un `UPDATE` se distinguen a simple vista, y
+`dispone_caso` pasa a ser **una escritura que cambia una fila en pantalla**.
+
+Postgres en su propio pod, no SQLite, porque un pod aparte es **una arista que
+Cilium puede gobernar**: el servidor MCP puede hablar con la base; los agentes
+no. Cuando el agente comprometido lo intente directo, Hubble lo ve aunque no
+haya traza que lo confiese.
+
+**La tabla `eventos` es la que prueba la neutralidad de dominio.** Con
+`atributos JSONB`, para el caso transaccional lleva importes y contrapartes;
+para el de SOC, puertos y procesos. Misma tabla, misma consulta, misma
+herramienta, cero código. Cargar el caso de SOC en vivo y ver filas distintas
+sin tocar nada es un momento de 30 segundos que vale por toda la sección.
+
+Nada de `transacciones` como nombre de tabla: en cuanto se escriba esa palabra,
+un caso de SOC obliga a tocar código.
+
 ### Consecuencia para la política
 
 - *Qué agente puede llamar qué tool* = política L7 de Cilium sobre las rutas.
@@ -113,20 +185,29 @@ segundos, sin que nadie sepa del dominio. Nombres claros, salidas legibles.
 
 ## 5. Observabilidad
 
-- OTel SDK en los agentes. **Un span por mensaje SLIM y un span por tool call**,
-  con `trace_id` propagado por toda la malla.
-- Cada span lleva `tokens.prompt`, `tokens.completion` y `model`. Así la
-  atribución de costos es una dimensión de la traza, no un contador con precios
-  inventados. El abstract de la sesión promete atribución de costos: esto es lo
-  que la cumple.
-- Camino: agentes → OTLP → OpenTelemetry Collector → exportador de Splunk.
+**Lo que se hace seguro:** cada llamada al modelo guarda lo que vLLM devuelve
+en `usage`, con los nombres **exactos** que después serán atributos de span:
+
+```
+tokens.prompt    tokens.completion    model
+```
+
+Se muestran y se acumulan por agente. Eso cumple la promesa de atribución de
+costos del abstract, y se dice con honestidad lo que es: el contador del motor,
+no una traza distribuida.
+
+**Lo que es best effort:** OTel → Collector → Splunk, con un span por mensaje
+A2A y un span por tool call, y `trace_id` propagado. Si llega, es la cereza.
+
+Esa nomenclatura no es cosmética: es lo que hace que llegar a Splunk sea
+**envolver** y no reescribir. Si hoy se llamaran `entrada` y `salida`, mañana
+habría que tocar cada sitio donde se usan.
 
 **Hubble es una segunda fuente obligatoria.** OTel es la autodeclaración de la
-aplicación: si el agente comprometido intenta una conexión fuera del pipeline,
-no va a emitir un span sobre ella. Sin Hubble no se puede mostrar una ausencia.
-El segmento 6 necesita ambas fuentes visibles.
-
----
+aplicación: si el agente comprometido intenta una conexión fuera del pipeline
+—por ejemplo ir directo a Postgres— no va a emitir un span sobre ella. Sin
+Hubble no se puede mostrar una ausencia. El segmento 6 necesita ambas fuentes
+visibles.
 
 ## 6. Seguridad
 
@@ -135,6 +216,26 @@ El segmento 6 necesita ambas fuentes visibles.
 | Contenido | Cisco AI Defense | detecta la inyección y la bloquea |
 | Red | Isovalent Enterprise Platform (Cilium) | 403 sobre arista autorizada con petición no autorizada |
 | Kernel | Isovalent Enterprise Runtime Security (Tetragon) | SIGKILL al binario no autorizado |
+
+### La lección que dan MCP y A2A juntos
+
+Tu insight #3 dice que la política tiene que ser sobre la intención (capa 7) y
+no sobre el par origen-destino (capa 4). MCP lo lleva un paso más allá:
+
+> **Incluso la capa 7 se queda corta si el protocolo multiplexa.** `POST /mcp`
+> es una sola ruta que lleva todas las herramientas, incluida la peligrosa.
+
+De ahí sale la estructura del segmento 6:
+
+1. **Tools por HTTP normal:** Cilium distingue `/consulta_historial` de
+   `/dispone_caso`. **403 preciso.**
+2. **El mismo ataque por MCP:** todo es `POST /mcp`. Cilium no puede
+   distinguir. **Pasa.**
+3. **Pero el binario se ejecuta** → Tetragon → **SIGKILL.**
+
+*Ninguna capa sola basta*, demostrado con dos protocolos en vez de con una
+frase. Y es actual: medio mundo está desplegando servidores MCP sin haber
+pensado esto.
 
 **Orden del segmento 6:** AI Defense entra ganando (detecta y bloquea primero,
 con su mapeo a OWASP LLM01 y MITRE ATLAS). Solo después la versión ofuscada
@@ -183,57 +284,127 @@ y en la UI ese contenido se renderiza distinto.
 seguridad son reales. Si algo no se puede probar de verdad, se deja pendiente,
 no se finge.
 
-- **Desarrollo local:** Windows con VM Ubuntu 24.04 vía Multipass (WSL2 no
-  sirve: su kernel no siempre expone BTF y Tetragon lo necesita). Dentro: kind
-  con Cilium (sin CNI por defecto, sin kube-proxy), Tetragon, y Ollama con un
-  modelo pequeño para desarrollar sin GPU.
-- **dCloud:** un L40S de 48 GB, **solo por reservas cortas**. Restricción de
-  diseño: todo lo que pueda desarrollarse sin GPU debe desarrollarse sin GPU.
-  Las ventanas de dCloud se reservan para vLLM y para lo que solo existe ahí.
-- `lab/bootstrap.sh` es el artefacto portable. La VM es desechable. Todo cambio
-  de entorno se escribe ahí, nunca solo se teclea.
+**Un solo host Linux con el L40S.** Ya no hay VM local ni split sin-GPU. La
+reserva actual termina el 2026-09-23 y después hay que migrar a la instancia
+que llega al día del evento.
 
----
+`lab/bootstrap.sh` es el artefacto portable, y esa migración es su prueba real:
+si migrar no es `git clone && ./bootstrap.sh`, el script está incompleto. Todo
+cambio de entorno se escribe ahí el mismo día, nunca solo se teclea.
+
+### El driver es el techo, y no se puede mover
+
+| | |
+|---|---|
+| Host | Ubuntu 22.04, kernel 5.15 (BTF presente, Tetragon funciona) |
+| GPU | L40S de 46 GB |
+| Driver | **555.42.06 → CUDA 12.5** |
+
+**No hay reinicio disponible**, así que el driver no se actualiza. Eso descarta
+todo lo compilado sobre CUDA 13 (que pide driver ≥ 580): el NIM de NVIDIA y las
+imágenes modernas de vLLM. Tampoco hay atajo por compatibilidad hacia adelante:
+las librerías de CUDA 13 cubren las ramas R535 y R570, y el 555 cae en el hueco.
+
+Al pedir la instancia del día del evento, **preguntar primero la versión del
+driver**. Es el dato que más condiciona todo lo demás.
+
+### El motor de inferencia
+
+vLLM corre **fuera de kind**, como contenedor en el host: pasar la GPU a un
+nodo de kind es frágil, y el segmento 1 se enseña mejor sin Kubernetes de por
+medio. Los agentes sí viven en kind y lo alcanzan por la IP del host, que
+`lab/endpoint.env` publica.
+
+Imagen fija `vllm/vllm-openai:v0.6.6.post1` (CUDA 12.x) con
+Qwen2.5-32B-Instruct-AWQ, `awq_marlin`, caché KV en fp8 y grafos CUDA
+encendidos. Medido el 2026-09-19:
+
+```
+18.01 GiB pesos · 13.82 GiB caché KV · concurrencia 3.46x a 32k
+```
+
+**Ese 3.46x condiciona el diseño.** Con router, dos agentes y el traductor del
+guardrail, cuatro llamadas concurrentes con contexto largo se encolan. Bajar
+`CTX` a 16k casi duplica la concurrencia y es la optimización más barata del
+proyecto.
+
+### Qué se reusa de la demo v1
+
+`triage-multiagente` no se toca, pero se le copian las piezas probadas: las
+cuatro políticas de seguridad (Cilium y Tetragon), `red.py` con su bitácora y
+`trace_id`, la mecánica de `historial` entre agentes, y el salto lateral
+`investigador → defensor`. La `TracingPolicy` resultó neutral al dominio por
+suerte: solo habla de pods etiquetados y del intérprete de Python.
 
 ## 9. Fases de construcción
 
-| Fase | Entregable que corre | Depende de |
-|---|---|---|
-| A | Malla mínima: router y dos agentes hablando por SLIM | vLLM listo |
-| B | Agent Directory (OASF) y ruteo por capacidad | A |
-| C | Tools, incluidas la acción peligrosa y la que ejecuta un binario | A |
-| D | OTel a Splunk con tokens como atributo del span | A, C |
-| E | Cilium L7 y Tetragon sobre agentes y tools | C |
-| F | AI Defense con la capa de traducción, más pulido de narración | D, E |
-| G | Presets del stand y subtítulos | F |
+Re-alcanzadas el 2026-09-19 contra el tiempo real disponible: un día completo
+(domingo 20) más dos días parciales. Las siete fases originales no caben, y el
+propio plan ya había decidido de antemano qué sobrevive.
 
-Cada fase deja algo demostrable. No saltar fases.
+| Fase | Entregable que corre | Estado |
+|---|---|---|
+| 0 | Entorno, esquema de datos, motor de inferencia | **Hecho y verificado** |
+| A | Postgres con el esquema y datos de los dos dominios | Pendiente |
+| B | Servidor MCP con las cinco tools | **Lo más nuevo y lo más riesgoso** |
+| C | Router por tarea y dos agentes con A2A, con salto lateral | Pendiente |
+| D | Agent Cards y registro OASF | Un JSON |
+| E | Cilium L7 y Tetragon (portadas de v1) | Escritas, sin correr |
+| F | Tokens en pantalla | Barato |
+| G | **Best effort:** OTel → Splunk, AI Defense | Si sobra tiempo |
+
+### El riesgo real, y su criterio de corte
+
+**El modelo no habla MCP.** vLLM devuelve `tool_calls` en formato OpenAI, y
+alguien tiene que traducirlos a llamadas MCP: el agente actuando como cliente
+MCP. Ese puente es lo único del plan que nadie ha probado.
+
+Se ataca primero, con corte a media mañana: si no hay un `tool_call` viajando
+hasta el servidor MCP y volviendo, **las tools se exponen por HTTP normal** y
+MCP se queda como la lámina conceptual, que de todos modos es donde vive su
+mejor aporte.
 
 ### El mínimo viable, decidido de antemano
 
-Si dCloud se complica o SLIM resulta inmaduro, sobreviven los segmentos 1, 3, 4
-y 6 (agente ≠ modelo, malla, herramientas, control). Directorio, ruteo y trazas
-son amplificadores.
+Si algo se complica, sobreviven los segmentos 1, 4 y 6 (agente ≠ modelo,
+herramientas, control). El segmento 1 ya corre y el 6 está probado en v1, así
+que el suelo es alto.
 
----
+Descubrimiento, ruteo y trazas son amplificadores.
 
 ## 10. Modo stand
 
-Mismo material, otro modo de reproducirlo. Un botón por preset que dispara la
-secuencia con avance automático y subtítulos.
+**El stand no se construye: se hereda.** Y eso depende de una sola regla.
+
+> **Lo que el stand muestra tiene que ser idempotente.**
+
+La demo de kernel ya lo es: el SIGKILL mata al proceso *hijo*, no al pod, así
+que el `restartCount` se queda en 0 y se puede correr doscientas veces sin que
+el estado cambie. El requisito de *"reinicio en menos de 10 segundos entre
+visitantes"* no se cumple: **no existe**, porque no hay nada que restaurar.
+
+El reparto se decide solo:
+
+| Va al stand | Se queda en la sesión |
+|---|---|
+| SIGKILL de Tetragon | `dispone_caso` (escribe en Postgres) |
+| 403 de Cilium | El debate entre agentes (tarda y varía) |
+| Consultas de evidencia (solo `SELECT`) | La inyección completa |
 
 | Preset | Qué corre |
 |---|---|
-| Atracción | bucle de ~50s con el 403 y el SIGKILL, sin audio |
-| Guiado corto | solo el segmento 6, ~3 min |
-| Profundo | los seis segmentos, ~12 min |
+| Atracción | `while true` con el SIGKILL y el 403, sin audio |
+| Guiado corto | Lo mismo con `read -p` entre bloques, para que el colega marque el ritmo |
 
-Requisitos propios: reinicio en menos de 10 segundos entre visitantes; **el pod
-tiene que volver después del SIGKILL** y quedar listo antes del siguiente;
-subtítulos que expliquen cada paso sin narrador (un colega opera el stand);
-tipografía legible a 4 metros; casos de SOC cargables sin cambiar código.
+**El terminal es la interfaz.** Los subtítulos son los `echo` que los scripts
+ya imprimen; solo hay que subir el tamaño de fuente para que se lean a cuatro
+metros. No se construye UI: cualquier orquestador sería más frágil que un bucle
+de comandos sin estado.
 
----
+El preset "profundo" de doce minutos no es un preset, es la sesión. Queda fuera.
+
+Lo opera un colega, no el autor. Por eso nada puede quedarse a medias ni pedir
+una decisión: si alguien le da Ctrl+C, se relanza con flecha arriba y Enter.
 
 ## 11. Cómo trabajar en este repo
 
@@ -251,18 +422,31 @@ tipografía legible a 4 metros; casos de SOC cargables sin cambiar código.
 
 - No hay modo simulación.
 - El repo anterior (`triage-multiagente`) se queda intacto como demo v1 y no se
-  toca desde aquí.
+  toca desde aquí. **Sí se le copian piezas** (§8).
 - Las diapositivas se arman aparte.
+- No se construye UI del stand: el terminal es la interfaz (§10).
 
 ---
 
-## 12. Decisiones abiertas
+## 12. Decisiones, cerradas el 2026-09-19
 
-- **SLIM:** qué runtime de AGNTCY y su madurez. Confirmar antes de la Fase A: es
-  la dependencia más pesada del plan.
-- **Modelo chico:** con la atribución de tokens, dos tiers vuelven a tener
-  sentido. Sin ella, el ruteo por capacidad hacia el agente correcto basta.
-- **Splunk:** Observability Cloud (mejor UI, requiere internet) contra
-  Enterprise self-host (offline, UI de trazas más pobre).
-- **El traductor:** ¿agente con Agent Card propia en el Directory, o sidecar del
-  guardrail?
+| Decisión | Resuelto |
+|---|---|
+| **Transporte** | A2A sobre HTTP. SLIM descartado: esconde la arista de Cilium |
+| **Descubrimiento** | Agent Cards en `/.well-known/`. El Directory de AGNTCY no corre; el registro OASF se enseña como archivo |
+| **Herramientas** | Un solo servidor MCP con las cinco |
+| **Modelo chico** | No hay. Un 32B AWQ ocupa 18 GiB y no caben dos tiers en esta GPU |
+| **Splunk** | Best effort. Los tokens se capturan hoy con los nombres de span para que llegar sea envolver |
+| **El traductor** | Si llega AI Defense, sidecar del guardrail. No merece Agent Card propia |
+
+### Riesgos vivos
+
+- **El puente OpenAI → MCP** es lo único sin probar. Tiene criterio de corte
+  (§9).
+- **Internet el día del evento.** Splunk y AI Defense lo requieren. Mitigación:
+  video de respaldo **por segmento**, no uno solo, y medir la red desde el piso
+  el día de armado.
+- **Seis encendidos en vivo.** Regla de abandono definida de antemano: si algo
+  no responde en 60 segundos, se pasa al video sin disculparse.
+- **El driver de la instancia final.** Preguntarlo al pedirla. Si trae ≥ 580 se
+  destraba el NIM con razonamiento; si trae 555, ya está todo resuelto.
