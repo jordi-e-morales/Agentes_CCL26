@@ -159,7 +159,27 @@ async def main(alerta: str, sujeto: str, url_mcp: str):
             print("Respuesta:", respuesta.content)
             return 1
 
-        mensajes.append(respuesta.model_dump(exclude_none=True))
+        # El mensaje del asistente se construye A MANO, campo por campo.
+        #
+        # Antes esto era respuesta.model_dump(exclude_none=True) y fallaba: el
+        # objeto del SDK arrastra campos propios (refusal, annotations, audio,
+        # function_call...) que vLLM no espera en un mensaje de entrada. Aqui se
+        # manda solo lo que la API necesita para entender que hubo tool_calls.
+        mensajes.append({
+            "role": "assistant",
+            "content": respuesta.content or "",
+            "tool_calls": [
+                {
+                    "id": t.id,
+                    "type": "function",
+                    "function": {
+                        "name": t.function.name,
+                        "arguments": t.function.arguments,
+                    },
+                }
+                for t in respuesta.tool_calls
+            ],
+        })
 
         # TRADUCCION 2: cada tool_call de OpenAI se convierte en una llamada MCP.
         for llamada in respuesta.tool_calls:
@@ -179,7 +199,18 @@ async def main(alerta: str, sujeto: str, url_mcp: str):
 
         print()
         traza("agente", "--- ronda 2: le devuelvo la evidencia al modelo ---")
-        final = preguntar(mensajes)
+        try:
+            final = preguntar(mensajes)
+        except Exception as e:
+            # Se captura aqui a proposito: si el error sube por el `async with`
+            # del cliente MCP, anyio lo envuelve en un ExceptionGroup y el
+            # mensaje real desaparece.
+            print()
+            print(f"LA RONDA 2 FALLO: {type(e).__name__}: {e}")
+            print()
+            print("Esto es lo que se le mando (para ver que rechazo):")
+            print(json.dumps(mensajes, ensure_ascii=False, indent=2)[:2500])
+            return 1
 
         print()
         print("=" * 70)
@@ -208,6 +239,19 @@ if __name__ == "__main__":
         sys.exit(asyncio.run(main(a.alerta, a.sujeto, a.mcp)))
     except KeyboardInterrupt:
         pass
-    except Exception as e:
-        print(f"\nFALLO: {type(e).__name__}: {e}", file=sys.stderr)
+    except BaseException as e:
+        # anyio envuelve los errores de dentro del TaskGroup en ExceptionGroup,
+        # y su str() no dice nada util. Hay que abrirlo.
+        def desenvolver(exc, nivel=0):
+            sangria = "  " * nivel
+            hijos = getattr(exc, "exceptions", None)
+            if hijos:
+                print(f"{sangria}{type(exc).__name__} con {len(hijos)} causa(s):",
+                      file=sys.stderr)
+                for h in hijos:
+                    desenvolver(h, nivel + 1)
+            else:
+                print(f"{sangria}{type(exc).__name__}: {exc}", file=sys.stderr)
+        print("\nFALLO:", file=sys.stderr)
+        desenvolver(e)
         sys.exit(1)
