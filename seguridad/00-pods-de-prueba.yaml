@@ -1,0 +1,58 @@
+# Dos pods pelados para probar el control de kernel SIN escribir ningun agente.
+#
+# La TracingPolicy no mira QUE agente eres ni que hace tu codigo. Mira dos
+# cosas: si tu pod lleva la etiqueta `rol: agente`, y si quien intenta ejecutar
+# un programa es el interprete de Python. Nada mas.
+#
+# Por eso dos pods con `sleep infinity` bastan para demostrar el mecanismo
+# completo, y se puede enseñar el segmento 6 antes de que exista un solo
+# agente. Eso es justo lo que pide el CLAUDE.md seccion 2: cada segmento tiene
+# que poder enseñarse solo.
+#
+#   agente-demo    lleva rol=agente  -> al intentar exec, SIGKILL
+#   servicio-demo  NO lo lleva       -> puede ejecutar con normalidad
+#
+# El contraste es el demo: la misma orden, dos resultados, y la unica
+# diferencia es una etiqueta.
+#
+# La imagen es python:3.13-slim a proposito: su interprete vive en
+# /usr/local/bin/python3.13, que es la ruta exacta que busca la politica.
+# Si cambias de imagen, comprueba la ruta con:
+#   kubectl -n agentes exec agente-demo -- readlink -f $(which python3)
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: agentes
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: agente-demo
+  namespace: agentes
+  labels:
+    rol: agente          # <-- ESTA etiqueta es la que lo condena
+spec:
+  containers:
+    - name: python
+      image: python:3.13-slim
+      command: ["sleep", "infinity"]
+      resources:
+        requests: {memory: 64Mi, cpu: 10m}
+        limits:   {memory: 256Mi}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: servicio-demo
+  namespace: agentes
+  labels:
+    rol: servicio        # <-- cualquier cosa MENOS "agente"
+spec:
+  containers:
+    - name: python
+      image: python:3.13-slim
+      command: ["sleep", "infinity"]
+      resources:
+        requests: {memory: 64Mi, cpu: 10m}
+        limits:   {memory: 256Mi}
