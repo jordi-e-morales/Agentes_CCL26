@@ -114,12 +114,25 @@ async def main(alerta: str, sujeto: str, url_mcp: str):
     consumo = {"tokens.prompt": 0, "tokens.completion": 0, "model": modelo}
 
     def preguntar(mensajes, herramientas=None):
+        # OJO: `tools` y `tool_choice` se OMITEN, no se ponen en None.
+        #
+        # El SDK de OpenAI no descarta los argumentos nulos: los manda
+        # explicitamente como `null` en el cuerpo JSON. vLLM valida estricto y
+        # rechaza con 400 si ve `tool_choice` presente sin `tools`:
+        #
+        #   "When using `tool_choice`, `tools` must be set."
+        #
+        # Por eso se construyen aparte y solo se pasan cuando hay herramientas.
+        opcionales = {}
+        if herramientas:
+            opcionales["tools"] = herramientas
+            opcionales["tool_choice"] = "auto"
+
         r = llm.chat.completions.create(
             model=modelo,
             messages=mensajes,
-            tools=herramientas,
-            tool_choice="auto" if herramientas else None,
             temperature=0.2,
+            **opcionales,
         )
         if r.usage:  # TRADUCCION 4
             consumo["tokens.prompt"] += r.usage.prompt_tokens
@@ -197,6 +210,10 @@ async def main(alerta: str, sujeto: str, url_mcp: str):
                 "content": texto,
             })
 
+        # Ronda 2 SIN herramientas, a proposito: obliga al modelo a concluir con
+        # lo que ya tiene. El agente de verdad querra un BUCLE (ofrecer las
+        # herramientas otra vez hasta que deje de pedirlas), pero para probar el
+        # puente dos rondas bastan y la salida se lee mejor.
         print()
         traza("agente", "--- ronda 2: le devuelvo la evidencia al modelo ---")
         try:
