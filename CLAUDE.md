@@ -369,13 +369,23 @@ propio plan ya había decidido de antemano qué sobrevive.
 | Fase | Entregable que corre | Estado |
 |---|---|---|
 | 0 | Entorno, esquema de datos, motor de inferencia | **Hecho y verificado** |
-| A | Postgres con el esquema y datos de los dos dominios | Pendiente |
-| B | Servidor MCP con las cinco tools | **Puente probado** con el modelo real (`spike-mcp/`). Faltan 2 tools y Postgres |
-| C | Router por tarea y dos agentes con A2A, con salto lateral | Pendiente |
+| A | Postgres con el esquema y datos de los dos dominios | **Hecho** (`datos/`) |
+| B | Servidor MCP con las cinco tools | **Hecho y probado** de punta a punta (`herramientas/`) |
+| C | Router por tarea y dos agentes con A2A, con salto lateral | Pendiente. El puente ya está escrito (`spike-mcp/agente.py`) |
 | D | Agent Cards y registro OASF | Un JSON |
 | E | Cilium L7 y Tetragon (portadas de v1) | Escritas, sin correr |
 | F | Tokens en pantalla | Barato |
 | G | **Best effort:** OTel → Splunk, AI Defense | Si sobra tiempo |
+
+### Lo que falta para que los segmentos 4 y 6 sean enseñables
+
+**El servidor MCP tiene que correr como pod, no en el host.** Hoy corre en el
+host con un `port-forward` a Postgres, que sirve para desarrollar y no sirve
+para el demo: Cilium no puede gobernar aristas que no atraviesan el cluster, y
+Tetragon no puede ver un `exec` que ocurre fuera de él.
+
+Necesita imagen, manifiesto y Service. Es trabajo sin incógnitas, pero es
+requisito de los dos segmentos.
 
 ### El riesgo real, y su criterio de corte
 
