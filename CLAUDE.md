@@ -370,7 +370,7 @@ propio plan ya había decidido de antemano qué sobrevive.
 |---|---|---|
 | 0 | Entorno, esquema de datos, motor de inferencia | **Hecho y verificado** |
 | A | Postgres con el esquema y datos de los dos dominios | Pendiente |
-| B | Servidor MCP con las cinco tools | **Lo más nuevo y lo más riesgoso** |
+| B | Servidor MCP con las cinco tools | **Puente probado** con el modelo real (`spike-mcp/`). Faltan 2 tools y Postgres |
 | C | Router por tarea y dos agentes con A2A, con salto lateral | Pendiente |
 | D | Agent Cards y registro OASF | Un JSON |
 | E | Cilium L7 y Tetragon (portadas de v1) | Escritas, sin correr |
@@ -379,14 +379,14 @@ propio plan ya había decidido de antemano qué sobrevive.
 
 ### El riesgo real, y su criterio de corte
 
-**El modelo no habla MCP.** vLLM devuelve `tool_calls` en formato OpenAI, y
-alguien tiene que traducirlos a llamadas MCP: el agente actuando como cliente
-MCP. Ese puente es lo único del plan que nadie ha probado.
+**RESUELTO el 2026-09-19.** El riesgo era que el modelo no habla MCP: vLLM
+devuelve `tool_calls` en formato OpenAI y alguien tiene que traducirlos. Ese
+puente está escrito y probado con Qwen2.5-32B-AWQ real: el modelo pidió tres
+herramientas, viajaron por MCP y volvió con evidencia (`spike-mcp/`).
 
-Se ataca primero, con corte a media mañana: si no hay un `tool_call` viajando
-hasta el servidor MCP y volviendo, **las tools se exponen por HTTP normal** y
-MCP se queda como la lámina conceptual, que de todos modos es donde vive su
-mejor aporte.
+El criterio de corte ya no hace falta. Lo que queda del segmento 4 es trabajo
+sin incógnitas: dos tools más y cambiar los cuerpos de las funciones para que
+lean de Postgres. Los nombres y las firmas no se tocan.
 
 ### El mínimo viable, decidido de antemano
 

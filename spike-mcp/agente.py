@@ -256,6 +256,10 @@ if __name__ == "__main__":
         sys.exit(asyncio.run(main(a.alerta, a.sujeto, a.mcp)))
     except KeyboardInterrupt:
         pass
+    except SystemExit:
+        # sys.exit() lanza SystemExit, que hereda de BaseException. Sin esta
+        # linea, una corrida BUENA acababa imprimiendo "FALLO: SystemExit: 0".
+        raise
     except BaseException as e:
         # anyio envuelve los errores de dentro del TaskGroup en ExceptionGroup,
         # y su str() no dice nada util. Hay que abrirlo.

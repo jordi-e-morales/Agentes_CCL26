@@ -21,10 +21,28 @@ reescribir.
 
 ## Estado
 
-| | |
+**PUENTE PROBADO** el 2026-09-19 en el host, con Qwen2.5-32B-AWQ real.
+
+El modelo leyó el catálogo MCP, decidió por su cuenta que necesitaba **tres**
+herramientas, las pidió en paralelo, las tres viajaron hasta el servidor MCP y
+volvieron con evidencia, y concluyó citando los eventos concretos.
+
+```
+tokens.prompt        1187
+tokens.completion     307
+model                Qwen/Qwen2.5-32B-Instruct-AWQ
+```
+
+Las cuatro traducciones funcionan. **El único riesgo vivo del plan queda
+cerrado** y el segmento 4 tiene cimiento.
+
+### Los tres tropiezos, por si reaparecen
+
+| Síntoma | Causa |
 |---|---|
-| Traducciones 1, 2 y 3 | **Verificadas** el 2026-09-19, servidor y cliente reales |
-| Traducción 4 y el viaje completo | Falta: necesita el vLLM del host |
+| `AttributeError: 'Tool' object has no attribute 'inputSchema'` | El SDK 2.x usa `input_schema`. Los ejemplos de internet son del 1.x |
+| `400: When using tool_choice, tools must be set` | El SDK de OpenAI manda los nulos como `null` en vez de omitirlos, y vLLM valida estricto. Hay que no pasar el parámetro |
+| `ExceptionGroup` sin mensaje útil | `anyio` envuelve lo que falla dentro del cliente MCP. Hay que desenvolverlo para ver la causa |
 
 ## Cómo correrlo
 
