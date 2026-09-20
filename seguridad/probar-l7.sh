@@ -85,9 +85,32 @@ pedir POST "$MCP" "$(printf "$LLAMAR" consulta_historial '{"sujeto_id":"SUJ-0001
 pedir POST "$MCP" "$(printf "$LLAMAR" dispone_caso '{"alerta_id":"ALR-FICTICIA-0001","estado":"cerrada","justificacion":"x"}')" >/dev/null
 echo ""
 echo "  Lo que Hubble vio de esas dos llamadas:"
-hubble observe --namespace "$NS" --to-label app=servidor-mcp --protocol http --last 6 2>/dev/null \
-  | sed 's/^/    /' \
-  || echo "    (hubble no responde; abre el port-forward: cilium hubble port-forward &)"
+
+# La salida se captura en una variable en vez de encadenar un `| sed`. Antes el
+# `||` de respaldo NO saltaba nunca: en una tuberia el codigo de salida es el
+# del ULTIMO comando, y sed devuelve 0 aunque hubble haya fallado. El bloque
+# salia vacio sin decir por que, que es la peor forma de fallar justo en la
+# parte que mas importa de esta prueba.
+if ! command -v hubble >/dev/null 2>&1; then
+  echo "    (falta la CLI de hubble; corre ./lab/bootstrap.sh)"
+elif ! hubble status >/dev/null 2>&1; then
+  echo "    (hubble no alcanza el relay. En otra terminal:)"
+  echo "      cilium hubble port-forward &"
+else
+  # Primero las HTTP, que son las que llevan metodo y ruta. Si no hay L7 en los
+  # flujos, se cae a las de capa 4, que al menos ensenan las conexiones.
+  flujos=$(hubble observe --namespace "$NS" --to-label app=servidor-mcp \
+             --protocol http --last 6 2>/dev/null)
+  if [ -z "$flujos" ]; then
+    echo "    (sin flujos L7; se muestran los de capa 4)"
+    flujos=$(hubble observe --namespace "$NS" --to-label app=servidor-mcp --last 6 2>/dev/null)
+  fi
+  if [ -z "$flujos" ]; then
+    echo "    (Hubble no registro nada. Puede tardar unos segundos: reintenta)"
+  else
+    echo "$flujos" | sed 's/^/    /'
+  fi
+fi
 echo ""
 echo "  Una lee evidencia. La otra CIERRA EL CASO. Para la red son la misma"
 echo "  peticion: POST /mcp. Eso es lo que MCP le esconde a la capa 7."
