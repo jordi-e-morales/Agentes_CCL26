@@ -1,4 +1,4 @@
-# La capa de kernel: el SIGKILL
+# Las dos capas de control: red y kernel
 
 Hay **dos políticas**, y la diferencia entre ellas es el argumento del
 segmento 6.
@@ -50,9 +50,41 @@ Nota de operadores: para `linux_binprm` valen `Equal`, `NotEqual`, `Prefix`,
 `Postfix` y `SubString`. **`NotIn` no está soportado** — si se usa, la política
 no dispara y no avisa.
 
+## Lo que se ve cuando funciona (medido el 2026-09-20)
+
+Salida real de `probar-l7.sh`, recortada. **Estas tres líneas son el segmento 6
+entero**, y no hay que editarlas para ponerlas en pantalla:
+
+```
+http-request DROPPED   (HTTP/1.1 GET  http://servidor-mcp...:9000/)
+http-request FORWARDED (HTTP/1.1 POST http://servidor-mcp...:9000/mcp)
+http-request FORWARDED (HTTP/1.1 POST http://servidor-mcp...:9000/mcp)
+```
+
+**La primera demuestra la capacidad.** Misma IP de origen, mismo puerto, mismo
+pod de destino — y se corta por la ruta. Eso es capa 7 de verdad, no filtrado
+de capa 4 disfrazado. Si alguien en la sala sospecha que es un truco, esa línea
+lo contesta.
+
+**Las otras dos demuestran el límite.** Son idénticas. La primera fue
+`consulta_historial`, que lee evidencia. La segunda fue `dispone_caso`, que
+**cierra el caso**. Para la red son la misma petición.
+
+En una sola pantalla está lo que la red puede hacer y lo que no.
+
+Y del lado del kernel, los dos eventos que cierran el argumento:
+
+```json
+{"ejecutaba":"/bin/sh",               "quiso_correr":"/usr/bin/id", "politica":"herramientas-lista-blanca"}
+{"ejecutaba":"/usr/local/bin/python3","quiso_correr":"/usr/bin/id", "politica":"herramientas-lista-blanca"}
+```
+
+La red autorizó la arista. El kernel atrapó lo que la red no podía ver.
+**Ninguna capa sola bastaba** — que es la frase con la que la sala se va.
+
 ---
 
-
+## El SIGKILL, en detalle
 
 Control de ejecución con Tetragon. Es el final del segmento 6 y lo único del
 demo que **mata procesos de verdad**.
