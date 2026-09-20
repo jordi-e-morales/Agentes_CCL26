@@ -1,0 +1,128 @@
+# OpenTelemetry Collector: la pieza que te desacopla de Splunk.
+#
+# POR QUE EXISTE, Y POR QUE ES EL PLAN DE RESPALDO
+# ------------------------------------------------
+# El agente NUNCA habla con Splunk. Habla con este Collector, y el Collector
+# decide a donde van las trazas. Esa indireccion es lo que convierte una
+# dependencia dura en una decision de configuracion.
+#
+# Por omision aqui solo esta el exportador `debug`, que imprime las trazas en
+# los logs del pod. Eso significa que puedes ENSEÑAR LA CASCADA sin Splunk, sin
+# credenciales y sin internet:
+#
+#     kubectl -n agentes logs -f deploy/otel-collector
+#
+# Que es la mitigacion directa del riesgo que el CLAUDE.md §12 llama
+# "dependencia de internet el dia del evento". Si la red del recinto falla, el
+# segmento 5 no se cae: cambia de pantalla.
+#
+# Añadir Splunk despues es descomentar un bloque y listar el exportador en el
+# pipeline. El agente no se entera.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-collector-config
+  namespace: agentes
+data:
+  collector.yaml: |
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+
+    processors:
+      batch:
+        timeout: 2s
+
+    exporters:
+      # SIEMPRE ENCENDIDO. Es el plan de respaldo: las trazas completas, con
+      # todos sus atributos, en los logs del pod. Sin dependencias externas.
+      debug:
+        verbosity: detailed
+
+      # ---------------------------------------------------------------------
+      # SPLUNK. Descomentar el que aplique y añadirlo al pipeline de abajo.
+      # Los valores exactos hay que confirmarlos contra el Splunk que se use;
+      # no se inventan aqui.
+      # ---------------------------------------------------------------------
+      #
+      # Splunk Observability Cloud (necesita internet y un token de ingesta):
+      # otlphttp/splunk:
+      #   traces_endpoint: https://ingest.<REALM>.signalfx.com/v2/trace/otlp
+      #   headers:
+      #     X-SF-Token: ${env:SPLUNK_ACCESS_TOKEN}
+      #
+      # Splunk Enterprise por HEC (funciona sin internet):
+      # splunk_hec/traces:
+      #   token: ${env:SPLUNK_HEC_TOKEN}
+      #   endpoint: https://<HOST>:8088/services/collector
+      #   index: trazas
+      #   tls:
+      #     insecure_skip_verify: true
+
+    service:
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [batch]
+          # Añadir aqui el exportador de Splunk cuando este configurado.
+          exporters: [debug]
+      telemetry:
+        logs:
+          level: info
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: otel-collector
+  namespace: agentes
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: otel-collector
+  template:
+    metadata:
+      labels:
+        app: otel-collector
+        # rol=infra, NO rol=agente: la TracingPolicy de Tetragon mata cualquier
+        # exec desde pods de agente, y este no lo es.
+        rol: infra
+    spec:
+      containers:
+        - name: collector
+          # DEUDA, la misma que en vllm-up.sh: fijar la version en cuanto la
+          # primera corrida funcione. "latest" cambia sola.
+          image: otel/opentelemetry-collector-contrib:latest
+          args: ["--config=/etc/otel/collector.yaml"]
+          ports:
+            - {containerPort: 4317, name: otlp-grpc}
+            - {containerPort: 4318, name: otlp-http}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/otel
+              readOnly: true
+          resources:
+            requests: {memory: 128Mi, cpu: 50m}
+            limits:   {memory: 512Mi}
+      volumes:
+        - name: config
+          configMap:
+            name: otel-collector-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: otel-collector
+  namespace: agentes
+spec:
+  selector:
+    app: otel-collector
+  ports:
+    - {port: 4317, targetPort: otlp-grpc, name: otlp-grpc}
+    - {port: 4318, targetPort: otlp-http, name: otlp-http}
+  type: ClusterIP

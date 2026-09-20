@@ -13,6 +13,11 @@
 
 openai
 
+# Trazas (observabilidad/). El exportador va por HTTP, que necesita menos
+# dependencias que el de gRPC y le basta al Collector.
+opentelemetry-sdk
+opentelemetry-exporter-otlp-proto-http
+
 # Cliente de PostgreSQL para el servidor de herramientas (herramientas/).
 # psycopg 3, con [binary] para no compilar nada en el host.
 psycopg[binary]
