@@ -9,6 +9,7 @@ El plan completo está en [`CLAUDE.md`](CLAUDE.md). Léelo antes de cambiar nada
 |---|---|
 | [`lab/`](lab/) | Instalación reproducible del entorno: herramientas, cluster, kernel, GPU |
 | [`esquema/`](esquema/) | El contrato de datos del que cuelgan las tools y la interfaz |
+| [`arquitectura/`](arquitectura/) | Cómo encajan las piezas. Empieza por [las capas de control](arquitectura/capas-de-control.md) |
 | [`spike-slim/`](spike-slim/) | Experimento que decide si SLIM entra al proyecto. Incluye [una explicación de SLIM desde cero](spike-slim/COMO-FUNCIONA-SLIM.md) |
 
 ## Levantar todo en un host limpio

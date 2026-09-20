@@ -49,10 +49,21 @@ import slim_bindings
 # Los nombres en SLIM tienen tres partes: organizacion/espacio/aplicacion.
 # Eso encaja de una con la idea del proyecto: la identidad del agente es parte
 # del sistema, no una etiqueta que le ponemos por fuera.
+#
+# OJO CON LA PALABRA "ROUTER": en este proyecto hay DOS cosas distintas.
+#
+#   nodo SLIM      = infraestructura. Reenvia bytes por nombre. Es el "data
+#                    plane", puerto 46357. No sabe que es un agente.
+#   router-tareas  = UN AGENTE MAS, colgado del bus igual que los otros.
+#                    Clasifica la tarea y despacha. Es el "router por tarea"
+#                    del CLAUDE.md seccion 3.
+#
+# El agente se llama aqui "router-tareas" y no "router" justamente para que
+# nadie los confunda. No es el centro de la RED; es el centro de la LOGICA.
 ORG = "ccl26"
 ESPACIO = "malla"
 
-ROUTER = f"{ORG}/{ESPACIO}/router"
+ROUTER = f"{ORG}/{ESPACIO}/router-tareas"
 AGENTE_A = f"{ORG}/{ESPACIO}/agente-a"
 AGENTE_B = f"{ORG}/{ESPACIO}/agente-b"
 

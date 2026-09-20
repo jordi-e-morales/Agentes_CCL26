@@ -45,14 +45,20 @@ concreto:
 Así que el spike se aprueba solo si corre este flujo:
 
 ```
-router  --(1) tarea-->  agente-a
-                        agente-a  --(2) consulta-->  agente-b   <- SALTO LATERAL
-                        agente-a  <--(3) respuesta--  agente-b
-router  <--(4) resultado--  agente-a
+router-tareas  --(1) tarea-->  agente-a
+                               agente-a  --(2) consulta-->  agente-b   <- SALTO LATERAL
+                               agente-a  <--(3) respuesta--  agente-b
+router-tareas  <--(4) resultado--  agente-a
 ```
 
 El paso 2 es el que importa: `agente-a` abre **su propia sesión** con
-`agente-b`, y el router no media, ni ve, ni reenvía esa conversación.
+`agente-b`, y `router-tareas` no media, ni ve, ni reenvía esa conversación.
+
+> **No confundas dos cosas que se llaman parecido.** El **nodo SLIM** es
+> infraestructura: reenvía bytes por nombre (el *data plane*, puerto 46357).
+> **`router-tareas`** es *un agente más*, colgado del bus igual que los otros,
+> que clasifica la tarea y despacha. No es el centro de la red; es el centro de
+> la lógica. Ver [las capas de control](../arquitectura/capas-de-control.md).
 
 **Si el salto lateral no funciona**, SLIM baja de columna vertebral a
 amplificador, se usa un transporte sustituto y se etiqueta en pantalla como
