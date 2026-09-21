@@ -24,6 +24,7 @@ type Evento =
       resultado?: string; endpoint?: string; metodo?: string }
   | { tipo: "salto"; de: string; a: string; sobre: any }
   | { tipo: "argumento"; agente: string; texto: string }
+  | { tipo: "sintesis"; texto: string }
   | { tipo: "consumo"; agente: string; tokens: Record<string, number> }
   | { tipo: "error"; mensaje: string }
   | { tipo: "fin" };
@@ -476,6 +477,29 @@ function Fila({ ev }: { ev: Evento }) {
         <div className="panel" style={{ marginTop: 10, borderLeft: "3px solid var(--cisco-cian)" }}>
           <div style={{ fontWeight: 600, marginBottom: 6 }}>{ev.agente}</div>
           <div>{ev.texto}</div>
+        </div>
+      );
+
+    case "sintesis":
+      /* El cierre del orquestador. Se destaca porque es lo que alguien leeria
+         si solo tuviera diez segundos, y porque es la unica voz que no toma
+         partido. */
+      return (
+        <div className="panel" style={{
+          marginTop: 14, borderColor: "var(--cisco-cian)",
+          borderLeft: "4px solid var(--cisco-cian)",
+        }}>
+          <div style={{ fontWeight: 600, marginBottom: 6 }}>
+            orquestador
+            <Info>
+              No opina sobre el caso ni puede actuar sobre él: no tiene
+              herramientas. Su único poder es resumir lo que los dos agentes
+              sostuvieron. Quien decide es quien recogió la evidencia.
+            </Info>
+          </div>
+          <div style={{ fontSize: "var(--texto-grande)", lineHeight: 1.5 }}>
+            {ev.texto}
+          </div>
         </div>
       );
 

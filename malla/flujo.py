@@ -22,7 +22,48 @@ deberia consumir este generador y quedarse solo con la impresion.
 import asyncio
 import json
 import os
+import pathlib
 import urllib.request
+
+RAIZ = pathlib.Path(__file__).resolve().parent.parent
+
+# ---------------------------------------------------------------------------
+# El orquestador NO tiene herramientas, y eso es a proposito.
+#
+# Solo lee lo que los dos agentes dijeron y lo sintetiza. No consulta la base,
+# no dispone del caso, no toca nada. Su unico poder es resumir.
+#
+# Esa separacion importa para el segmento 6: si el orquestador pudiera actuar,
+# habria que gobernarlo tambien, y el relato se complica. Asi la superficie de
+# accion se queda donde el CLAUDE.md la puso -en el ejecutor de herramientas- y
+# quien decide es quien recogio la evidencia.
+# ---------------------------------------------------------------------------
+PROMPT_ORQUESTADOR = (
+    "Eres el ORQUESTADOR de un equipo de triage de alertas. Acabas de escuchar "
+    "a dos agentes que sostienen posturas opuestas sobre la misma alerta.\n\n"
+    "Tu trabajo NO es dar tu propia opinion sobre el caso, sino sintetizar la "
+    "deliberacion para quien tenga que decidir:\n"
+    "  - En que estan de acuerdo los dos.\n"
+    "  - En que discrepan, y que evidencia sostiene cada lado.\n"
+    "  - Que falta por comprobar, si falta algo.\n\n"
+    "Se breve y concreto: tres o cuatro frases. No inventes hechos que ninguno "
+    "de los dos haya citado."
+)
+
+
+def _llm():
+    """Cliente del motor de inferencia, leido de lab/endpoint.env."""
+    from openai import OpenAI
+    env = RAIZ / "lab" / "endpoint.env"
+    v = {}
+    if env.exists():
+        for linea in env.read_text(encoding="utf-8").splitlines():
+            if "=" in linea and not linea.lstrip().startswith("#"):
+                k, _, val = linea.partition("=")
+                v[k.strip()] = val.strip()
+    base = v.get("OPENAI_BASE_URL_HOST", "http://localhost:8000/v1")
+    modelo = v.get("MODEL", "Qwen/Qwen2.5-32B-Instruct-AWQ")
+    return OpenAI(base_url=base, api_key="no-hace-falta"), modelo
 
 AGENTES = {
     "investigador": os.getenv("URL_INVESTIGADOR", "http://localhost:7010"),
@@ -147,4 +188,36 @@ async def deliberar(alerta: str, sujeto: str, busca: str = "riesgo"):
     if salto and salto.get("consumo_del_vecino"):
         yield {"tipo": "consumo", "agente": salto.get("a"),
                "tokens": salto["consumo_del_vecino"]}
+
+    # ---- 6. LA SINTESIS --------------------------------------------------
+    # El orquestador cierra: no opina del caso, resume la deliberacion. Es el
+    # unico momento en que habla con el modelo, y lo hace sin herramientas.
+    if salto and salto.get("texto"):
+        yield {"tipo": "paso", "n": 7, "nombre": "La sintesis",
+               "explicacion": "El orquestador resume la deliberacion. No opina ni actua: solo resume."}
+        try:
+            llm, modelo = _llm()
+            postura_a = texto.split("---")[0].strip()
+            postura_b = salto["texto"]
+            def preguntar():
+                return llm.chat.completions.create(
+                    model=modelo, temperature=0.2,
+                    messages=[
+                        {"role": "system", "content": PROMPT_ORQUESTADOR},
+                        {"role": "user", "content":
+                         f"Alerta {alerta}, sujeto {sujeto}.\n\n"
+                         f"--- {elegido['clave']} ---\n{postura_a}\n\n"
+                         f"--- {salto['a']} ---\n{postura_b}"},
+                    ],
+                )
+            r = await asyncio.to_thread(preguntar)
+            yield {"tipo": "sintesis", "texto": r.choices[0].message.content or ""}
+            if r.usage:
+                yield {"tipo": "consumo", "agente": "orquestador",
+                       "tokens": {"tokens.prompt": r.usage.prompt_tokens,
+                                  "tokens.completion": r.usage.completion_tokens}}
+        except Exception as e:
+            yield {"tipo": "error",
+                   "mensaje": f"la sintesis fallo: {type(e).__name__}: {e}"}
+
     yield {"tipo": "fin"}
