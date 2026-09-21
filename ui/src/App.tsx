@@ -64,7 +64,8 @@ export default function App() {
         <span className="sub">Triage de alertas · datos sintéticos</span>
       </header>
 
-      <main style={{ maxWidth: 1080, margin: "0 auto", padding: "24px 28px 80px" }}>
+      <div className="columnas">
+        <main>
         {/* Los dos dominios, lado a lado. Es la prueba de neutralidad: el mismo
             codigo, los mismos agentes, dos mundos que no se parecen. */}
         <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 8 }}>
@@ -95,8 +96,6 @@ export default function App() {
           cambia es el caso.
         </p>
 
-        <GPU activo={corriendo} />
-
         {eventos.length === 0 && !corriendo && (
           <div className="panel" style={{ marginTop: 24 }}>
             <p style={{ margin: 0 }} className="suave">
@@ -107,7 +106,16 @@ export default function App() {
         )}
 
         {eventos.map((ev, i) => <Fila key={i} ev={ev} />)}
-      </main>
+        </main>
+
+        {/* El lateral no se mueve al hacer scroll: la GPU y los prompts son el
+            contexto que da sentido a todo lo de la izquierda, y perderlos de
+            vista obligaria a recordarlos. */}
+        <aside className="lateral">
+          <GPU activo={corriendo} />
+          <Prompts />
+        </aside>
+      </div>
     </>
   );
 }
@@ -122,6 +130,19 @@ export default function App() {
  * Debajo, la tarjeta CRUDA. Es lo que de verdad viaja; el resumen de arriba es
  * una comodidad, no la fuente.
  */
+/* La (i) de informacion.
+ *
+ * Aqui va lo SECUNDARIO. La explicacion de una frase de cada paso se queda
+ * siempre visible -regla de interfaz numero 1-, porque quien presenta no
+ * deberia depender de acordarse. Esto es para el contexto que enriquece pero
+ * no hace falta para seguir el hilo.
+ */
+function Info({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="info">i<span className="nota">{children}</span></span>
+  );
+}
+
 function Tarjeta({ ev }: { ev: Extract<Evento, { tipo: "agente" }> }) {
   const [cruda, setCruda] = useState(false);
 
@@ -215,6 +236,65 @@ function Herramienta({ ev }: { ev: Extract<Evento, { tipo: "herramienta" }> }) {
  * Son dos prompts y dos identidades sobre los mismos pesos, en el mismo
  * proceso, en la misma GPU. Y lo dice una tabla que no dibujamos nosotros.
  */
+/* Los prompts, en el lateral.
+ *
+ * Parecen campos de texto editables y NO lo son. Que lo parezcan es
+ * deliberado: invita a preguntar "¿y si lo cambio?", que es exactamente la
+ * pregunta que abre el insight #1.
+ *
+ * Se leen del codigo por la API, no de una copia escrita aqui. Si alguien
+ * cambia un prompt y esta pantalla no lo refleja, estaria mintiendo sobre lo
+ * unico que la sesion afirma que importa.
+ */
+function Prompts() {
+  const [datos, setDatos] = useState<any[]>([]);
+  const [abierto, setAbierto] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch("/api/prompts").then((r) => r.json()).then(setDatos).catch(() => {});
+  }, []);
+
+  return (
+    <div className="panel" style={{ marginTop: 18 }}>
+      <div style={{ fontWeight: 600 }}>
+        Lo único que los hace distintos
+        <Info>
+          Los dos agentes corren sobre los mismos pesos, en el mismo proceso y
+          en la misma GPU. No hay dos modelos. Lo que separa al que acusa del
+          que defiende cabe en estos dos párrafos — y en su identidad y sus
+          permisos, que gobiernan Cilium y Tetragon.
+        </Info>
+      </div>
+      {datos.length === 0 && <p className="tenue" style={{ fontSize: 13 }}>cargando…</p>}
+      {datos.map((d) => (
+        <div key={d.rol} style={{ marginTop: 10 }}>
+          <button
+            onClick={() => setAbierto(abierto === d.rol ? null : d.rol)}
+            style={{
+              width: "100%", textAlign: "left", cursor: "pointer",
+              background: abierto === d.rol ? "var(--panel-alto)" : "transparent",
+              border: "1px solid var(--borde)", borderRadius: 6,
+              color: "var(--texto)", padding: "8px 12px",
+              fontSize: "var(--texto-chico)", fontFamily: "var(--fuente)",
+            }}
+          >
+            {abierto === d.rol ? "▾" : "▸"} {d.rol}
+          </button>
+          {abierto === d.rol && (
+            <>
+              <textarea className="prompt" rows={9} value={d.prompt} readOnly
+                        style={{ marginTop: 8 }} />
+              <p className="tenue" style={{ fontSize: 12, margin: "4px 0 0" }}>
+                solo lectura
+              </p>
+            </>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function GPU({ activo }: { activo: boolean }) {
   const [salida, setSalida] = useState("consultando…");
 
@@ -238,11 +318,15 @@ function GPU({ activo }: { activo: boolean }) {
 
   return (
     <div className="panel" style={{ marginTop: 18 }}>
-      <div style={{ fontWeight: 600 }}>La GPU, en vivo</div>
-      <p className="suave" style={{ fontSize: "var(--texto-chico)", margin: "2px 0 0" }}>
-        Un solo proceso sirve a los dos agentes. Lo que los hace distintos no
-        está aquí: está en su prompt y en su identidad.
-      </p>
+      <div style={{ fontWeight: 600 }}>
+        La GPU, en vivo
+        <Info>
+          Mientras los dos agentes deliberan, aquí se ve <strong>un solo
+          proceso</strong> de Python ocupando la tarjeta. No dos. Lo que los
+          hace distintos no está en la GPU: está en su prompt y en su identidad.
+          Y esta tabla no la dibujamos nosotros.
+        </Info>
+      </div>
       <pre className="sobre mono" style={{ fontSize: 13, lineHeight: 1.35 }}>{salida}</pre>
     </div>
   );

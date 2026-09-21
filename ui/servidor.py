@@ -109,6 +109,24 @@ async def gpu(_req):
                              "salida": f"no se pudo consultar la GPU: {type(e).__name__}: {e}"})
 
 
+async def prompts(_req):
+    """Los prompts de los agentes, tal cual estan en el codigo.
+
+    Se enseñan porque SON la respuesta al insight #1. Dos agentes sobre los
+    mismos pesos, en el mismo proceso, en la misma GPU -y uno acusa mientras el
+    otro defiende-. La diferencia entera cabe en estos dos parrafos.
+
+    Se leen del modulo, no de una copia: si alguien cambia el prompt y no
+    actualiza la interfaz, la interfaz estaria mintiendo sobre lo unico que
+    esta sesion afirma que importa.
+    """
+    from malla.agente import ROLES
+    return JSONResponse([
+        {"rol": rol, "prompt": cfg["prompt"], "vecino": cfg["vecino"]}
+        for rol, cfg in ROLES.items()
+    ])
+
+
 async def salud(_req):
     return JSONResponse({"ok": True})
 
@@ -127,6 +145,7 @@ async def indice(_req):
 rutas = [
     Route("/api/salud", salud),
     Route("/api/gpu", gpu),
+    Route("/api/prompts", prompts),
     Route("/api/agentes", agentes),
     Route("/api/deliberar", deliberar),
 ]

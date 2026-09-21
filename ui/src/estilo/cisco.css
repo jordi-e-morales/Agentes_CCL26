@@ -79,6 +79,11 @@ code, pre, .mono { font-family: var(--fuente-mono); }
 
 /* Paneles */
 .panel {
+  /* position + z-index en hover: la nota de la (i) se sale del panel, y sin
+   * esto quedaba por DEBAJO del contenido vecino. Subir el panel entero
+   * mientras el cursor esta encima es mas robusto que ajustar el z-index de
+   * cada pieza. */
+  position: relative;
   background: var(--panel);
   border: 1px solid var(--borde);
   border-radius: var(--radio);
@@ -101,6 +106,8 @@ code, pre, .mono { font-family: var(--fuente-mono); }
 .paso .explicacion { margin: 2px 0 0; color: var(--texto-suave); font-size: var(--texto-chico); }
 
 /* Etiquetas */
+.panel:hover { z-index: 40; }
+
 .chip {
   display: inline-block; padding: 2px 10px; border-radius: 999px;
   font-size: 13px; font-weight: 500;
@@ -121,3 +128,81 @@ pre.sobre {
 
 .tenue { color: var(--texto-tenue); }
 .suave { color: var(--texto-suave); }
+
+/* ---------------------------------------------------------------------------
+ * Dos columnas: los pasos a la izquierda, lo que no se mueve a la derecha.
+ *
+ * El panel lateral es "sticky" a proposito. Mientras se recorren los pasos, la
+ * GPU y los prompts se quedan a la vista: son el contexto que da sentido a todo
+ * lo demas, y perderlos al hacer scroll obligaria a recordarlos.
+ * ------------------------------------------------------------------------- */
+.columnas {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 380px;
+  gap: 28px;
+  max-width: 1480px;
+  margin: 0 auto;
+  padding: 24px 28px 80px;
+  align-items: start;
+}
+.lateral { position: sticky; top: 24px; }
+
+@media (max-width: 1200px) {
+  .columnas { grid-template-columns: 1fr; }
+  .lateral { position: static; }
+}
+
+/* ---------------------------------------------------------------------------
+ * La (i) de informacion.
+ *
+ * Las notas largas se esconden aqui para que la pantalla respire, pero la
+ * explicacion de UNA FRASE de cada paso se queda siempre visible: esa es la
+ * regla de interfaz numero 1 y no se negocia. Esto es para lo secundario.
+ *
+ * Y de paso es un recurso de presentacion: se revela cuando quien narra decide,
+ * no antes.
+ * ------------------------------------------------------------------------- */
+.info {
+  display: inline-grid; place-items: center;
+  width: 19px; height: 19px; margin-left: 7px;
+  border-radius: 50%; border: 1px solid var(--cisco-cian);
+  color: var(--cisco-cian); font-size: 12px; font-weight: 700;
+  cursor: help; position: relative; vertical-align: middle;
+  font-family: var(--fuente);
+  /* La (i) tiene que apilarse por encima de SUS HERMANOS, no solo la nota.
+   * Sin esto, la nota llevaba z-index pero el elemento que la contiene no, asi
+   * que los botones de mas abajo del mismo panel la tapaban y el texto se leia
+   * por detras de ellos. */
+  z-index: 30;
+}
+.info .nota {
+  visibility: hidden; opacity: 0; transition: opacity .12s;
+  /* ABAJO y anclada a la DERECHA, no arriba y centrada.
+   *
+   * Arriba se salia del viewport y se cortaba: estas (i) viven en paneles que
+   * estan cerca del borde superior. Y centrada se salia por el lado derecho,
+   * porque el panel lateral esta pegado a ese borde. Creciendo hacia abajo y
+   * hacia la izquierda cabe en los dos sitios. */
+  /* Hacia la IZQUIERDA y un poco abajo. Abriendo hacia abajo se superponia a
+   * los botones del propio panel; hacia arriba se salia del viewport. A la
+   * izquierda del icono hay sitio en los dos sitios donde se usa. */
+  position: absolute; top: -6px; right: 150%;
+  width: 320px; padding: 12px 14px; z-index: 50;
+  background: var(--panel-alto); border: 1px solid var(--cisco-cian);
+  border-radius: 8px; box-shadow: var(--sombra);
+  color: var(--texto); font-size: var(--texto-chico); font-weight: 400;
+  line-height: 1.45; text-align: left; cursor: default;
+}
+.info:hover .nota { visibility: visible; opacity: 1; }
+
+/* El prompt: parece un campo de texto, pero no se puede editar.
+ * Que lo parezca es deliberado: invita a preguntar "¿y si lo cambio?", que es
+ * exactamente la pregunta que abre el insight #1. */
+.prompt {
+  width: 100%; background: #05101F;
+  border: 1px solid var(--borde); border-radius: 8px;
+  color: var(--texto); font-family: var(--fuente-mono);
+  font-size: 13px; line-height: 1.5; padding: 12px 14px;
+  resize: none; cursor: not-allowed;
+}
+.prompt:focus { outline: 1px solid var(--borde-vivo); }
