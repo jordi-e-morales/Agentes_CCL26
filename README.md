@@ -12,6 +12,15 @@ El plan completo está en [`CLAUDE.md`](CLAUDE.md). Léelo antes de cambiar nada
 | [`arquitectura/`](arquitectura/) | Cómo encajan las piezas. Empieza por [las capas de control](arquitectura/capas-de-control.md) |
 | [`spike-slim/`](spike-slim/) | Experimento que decide si SLIM entra al proyecto. Incluye [una explicación de SLIM desde cero](spike-slim/COMO-FUNCIONA-SLIM.md) |
 
+## Cómo levantar todo
+
+El procedimiento completo, paso a paso, está en **[GUIA.md](GUIA.md)**. Y para
+saber qué falta en cualquier momento:
+
+```bash
+bash lab/estado.sh
+```
+
 ## Levantar todo en un host limpio
 
 Esta es la receta completa, y **tiene que seguir siendo esta receta**. Si
