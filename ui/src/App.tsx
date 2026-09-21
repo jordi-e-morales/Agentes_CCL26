@@ -37,12 +37,17 @@ export default function App() {
   const [eventos, setEventos] = useState<Evento[]>([]);
   const [corriendo, setCorriendo] = useState(false);
   const [caso, setCaso] = useState(CASOS[0]);
+  const [hora, setHora] = useState<string | null>(null);
   const fuente = useRef<EventSource | null>(null);
 
   function arrancar(c: typeof CASOS[0]) {
     fuente.current?.close();
     setCaso(c);
     setEventos([]);
+    // En vivo, confundir un resultado de hace media hora con el de ahora es de
+    // los errores mas incomodos que hay. La pantalla ya se vacia al arrancar;
+    // la hora deja claro ademas CUANDO fue lo que se esta viendo.
+    setHora(new Date().toLocaleTimeString("es"));
     setCorriendo(true);
     const es = new EventSource(`/api/deliberar?alerta=${c.id}&sujeto=${c.sujeto}`);
     fuente.current = es;
@@ -90,6 +95,9 @@ export default function App() {
             </button>
           ))}
           {corriendo && <span className="suave">deliberando…</span>}
+          {hora && !corriendo && (
+            <span className="tenue" style={{ fontSize: 13 }}>corrida de las {hora}</span>
+          )}
         </div>
         <p className="tenue" style={{ fontSize: "var(--texto-chico)", marginTop: 0 }}>
           Mismo código, mismos agentes, mismas cinco herramientas. Lo único que
@@ -195,6 +203,21 @@ ruta       : ${ev.tarjeta.supportedInterfaces?.[0]?.url ?? "-"}`}
  */
 function Herramienta({ ev }: { ev: Extract<Evento, { tipo: "herramienta" }> }) {
   const [cruda, setCruda] = useState(false);
+
+  /* El `resumen` que devuelve cada herramienta, en español.
+   *
+   * Existe por la regla del CLAUDE.md §4: las tools de evidencia tienen que
+   * explicarse solas en tres segundos. La interfaz no lo usaba, y eso causo
+   * una confusion real: ver `listas: []` en crudo parece que la herramienta
+   * fallo, cuando lo que dice es "este sujeto no esta en ninguna lista".
+   *
+   * Un resultado VACIO y un resultado ROTO se ven igual en JSON crudo. Aqui
+   * no: el resumen dice lo que paso, y el crudo queda detras del boton para
+   * quien quiera comprobarlo. */
+  let resumen: string | null = null;
+  try {
+    resumen = ev.resultado ? (JSON.parse(ev.resultado).resumen ?? null) : null;
+  } catch { resumen = null; }
   return (
     <div className="panel" style={{ marginTop: 10 }}>
       {/* Si falta el endpoint, se DICE. Antes simplemente no se dibujaba nada,
@@ -216,6 +239,12 @@ function Herramienta({ ev }: { ev: Extract<Evento, { tipo: "herramienta" }> }) {
         <span style={{ color: "var(--cisco-cian)" }}>{ev.nombre}</span>
         <span className="tenue">({JSON.stringify(ev.args)})</span>
       </div>
+      {resumen && (
+        <div style={{ marginTop: 8 }}>
+          <span className="tenue" style={{ fontSize: 13 }}>devolvió:</span>{" "}
+          <strong>{resumen}</strong>
+        </div>
+      )}
       {!ev.resultado && (
         <div className="mono" style={{ fontSize: 13, color: "var(--aviso)", marginTop: 8 }}>
           sin respuesta capturada — misma causa probable
