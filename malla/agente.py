@@ -39,6 +39,7 @@ Uso:
 # tiene. Para averiguarlo:  ss -ltnp | grep ':7010'
 import argparse
 import asyncio
+import hashlib
 import json
 import os
 import pathlib
@@ -86,6 +87,22 @@ ROLES = {
         "vecino": None,         # el defensor no reenvia a nadie
     },
 }
+
+
+def version_del_codigo() -> str:
+    """Huella del propio archivo, para saber si este proceso esta al dia.
+
+    Existe porque "los agentes corriendo codigo viejo" ya ha costado varias
+    sesiones de depuracion: se cambia malla/agente.py, se olvida reiniciar las
+    dos terminales, y el sintoma es que una funcion nueva "no hace nada". Desde
+    fuera es indistinguible de un fallo real.
+    
+    El agente publica esta huella en /salud y lab/estado.sh la compara con la
+    del archivo en disco. Asi el desfase se ve en vez de sospecharse.
+    """
+    return hashlib.sha256(
+        pathlib.Path(__file__).read_bytes()
+    ).hexdigest()[:12]
 
 
 def leer_endpoint() -> tuple[str, str]:
@@ -366,9 +383,14 @@ def construir(rol: str, url_mcp: str) -> Starlette:
         sobre("sale", f"{rol} ->", respuesta)
         return JSONResponse(respuesta)
 
+    async def salud(_req):
+        return JSONResponse({"ok": True, "rol": rol,
+                             "version_codigo": version_del_codigo()})
+
     return Starlette(routes=[
         Route("/.well-known/agent-card.json", tarjeta),
         Route("/a2a", a2a, methods=["POST"]),
+        Route("/salud", salud),
     ])
 
 
@@ -380,7 +402,7 @@ def main():
     a = p.parse_args()
 
     import uvicorn
-    print(f"Agente {a.rol} en http://0.0.0.0:{a.puerto}")
+    print(f"Agente {a.rol} en http://0.0.0.0:{a.puerto}  (codigo {version_del_codigo()})")
     print(f"  tarjeta:     /.well-known/agent-card.json")
     print(f"  mensajes:    POST /a2a")
     print(f"  herramientas: {a.mcp}  (por MCP)")

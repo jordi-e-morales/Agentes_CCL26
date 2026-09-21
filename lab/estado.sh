@@ -84,8 +84,29 @@ puerto() {  # puerto  descripcion  como_levantarlo
   fi
 }
 puerto 9000 "port-forward del MCP (:9000)" "kubectl -n $NS port-forward deploy/servidor-mcp 9000:9000"
-puerto 7010 "agente investigador (:7010)"  ".venv/bin/python malla/agente.py --rol investigador"
-puerto 7011 "agente defensor (:7011)"      ".venv/bin/python malla/agente.py --rol defensor --puerto 7011"
+# Los agentes no solo tienen que estar ARRIBA: tienen que estar al dia.
+#
+# "Reinicie los agentes?" ha sido la causa de varias sesiones de depuracion:
+# se cambia malla/agente.py, se olvida reiniciar, y el sintoma es que algo
+# nuevo "no hace nada" -indistinguible de un fallo real-. Cada agente publica
+# la huella de su propio codigo en /salud; aqui se compara con la del disco.
+agente_al_dia() {  # puerto  descripcion  como_levantarlo
+  if ! (echo >/dev/tcp/127.0.0.1/"$1") >/dev/null 2>&1; then
+    falta "$2" "$3"; return
+  fi
+  local en_disco en_memoria
+  en_disco=$(python3 -c "import hashlib,pathlib;print(hashlib.sha256(pathlib.Path('malla/agente.py').read_bytes()).hexdigest()[:12])" 2>/dev/null)
+  en_memoria=$(curl -s "http://127.0.0.1:$1/salud" 2>/dev/null | jq -r '.version_codigo // empty' 2>/dev/null)
+  if [ -z "$en_memoria" ]; then
+    falta "$2 corre CODIGO VIEJO (sin /salud)" "reinicialo: $3"
+  elif [ "$en_memoria" != "$en_disco" ]; then
+    falta "$2 corre CODIGO VIEJO ($en_memoria != $en_disco)" "reinicialo: $3"
+  else
+    ok "$2"
+  fi
+}
+agente_al_dia 7010 "agente investigador (:7010)" ".venv/bin/python malla/agente.py --rol investigador"
+agente_al_dia 7011 "agente defensor (:7011)"     ".venv/bin/python malla/agente.py --rol defensor --puerto 7011"
 puerto 8080 "la interfaz (:8080)"          ".venv/bin/python ui/servidor.py"
 
 # Opcional: solo hace falta si se quieren trazas.
