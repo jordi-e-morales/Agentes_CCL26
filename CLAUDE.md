@@ -134,13 +134,14 @@ que decir "A2A dentro de la visión de Internet de los Agentes" es exacto.
 
 Las tools no son un extra: son la superficie donde aterriza la seguridad.
 
-**Las cinco viven en un solo servidor MCP.** No se reparten. Un servidor MCP
+**Las seis viven en un solo servidor MCP.** No se reparten. Un servidor MCP
 con todo dentro es lo que se hace en la realidad, y es justo lo que hace que la
 lección aterrice: `POST /mcp` es una sola ruta que lleva todas tus
 herramientas, incluida la que dispone del caso.
 
 | Tool | Tipo | Para qué |
 |---|---|---|
+| `contexto_alerta` | evidencia | **la puerta del ataque**: devuelve los textos libres con su `source_trust` |
 | `consulta_historial` | evidencia | alimenta el debate con datos |
 | `lista_sancionados` | evidencia | idem |
 | `perfil_sujeto` | evidencia | idem |

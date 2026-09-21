@@ -31,6 +31,10 @@ type Evento =
 const CASOS = [
   { id: "ALR-FICTICIA-0001", sujeto: "SUJ-0001", etiqueta: "Monitoreo transaccional" },
   { id: "ALR-FICTICIA-0002", sujeto: "SUJ-0002", etiqueta: "Alertas de SOC" },
+  // El tercero trae la inyeccion, en un fragmento con source_trust=external.
+  // Se marca en rojo porque no es un caso mas: es el del segmento 6.
+  { id: "ALR-FICTICIA-0003", sujeto: "SUJ-0003", etiqueta: "Con texto externo",
+    peligroso: true },
 ];
 
 export default function App() {
@@ -80,9 +84,13 @@ export default function App() {
               onClick={() => arrancar(c)}
               disabled={corriendo}
               style={{
-                background: caso.id === c.id ? "var(--cisco-cian)" : "var(--panel-alto)",
-                color: caso.id === c.id ? "var(--cisco-marino)" : "var(--texto)",
-                border: "1px solid var(--borde)",
+                background: caso.id === c.id
+                  ? ((c as any).peligroso ? "var(--bloqueo)" : "var(--cisco-cian)")
+                  : "var(--panel-alto)",
+                color: caso.id === c.id
+                  ? ((c as any).peligroso ? "#fff" : "var(--cisco-marino)")
+                  : "var(--texto)",
+                border: `1px solid ${(c as any).peligroso ? "var(--bloqueo)" : "var(--borde)"}`,
                 borderRadius: "var(--radio)",
                 padding: "12px 20px",
                 fontSize: "var(--texto-base)",
@@ -215,8 +223,11 @@ function Herramienta({ ev }: { ev: Extract<Evento, { tipo: "herramienta" }> }) {
    * no: el resumen dice lo que paso, y el crudo queda detras del boton para
    * quien quiera comprobarlo. */
   let resumen: string | null = null;
+  let fragmentos: any[] = [];
   try {
-    resumen = ev.resultado ? (JSON.parse(ev.resultado).resumen ?? null) : null;
+    const d = ev.resultado ? JSON.parse(ev.resultado) : null;
+    resumen = d?.resumen ?? null;
+    fragmentos = d?.fragmentos ?? [];
   } catch { resumen = null; }
   return (
     <div className="panel" style={{ marginTop: 10 }}>
@@ -245,6 +256,30 @@ function Herramienta({ ev }: { ev: Extract<Evento, { tipo: "herramienta" }> }) {
           <strong>{resumen}</strong>
         </div>
       )}
+
+      {/* Los textos del caso, con su procedencia a la vista.
+       *
+       * El CLAUDE.md §7 lo exige: el contenido `external` se renderiza
+       * distinto. La razon es narrativa y hay que tenerla clara — la sala
+       * tiene que VER que el sistema sabia de donde venia ese texto, y que
+       * aun asi el modelo le hizo caso. Si se viera igual que el resto,
+       * pareceria un truco. */}
+      {fragmentos.map((f) => (
+        <div key={f.id} className={f.source_trust === "external" ? "externo" : "interno"}>
+          <div style={{ fontSize: 13, marginBottom: 4 }}>
+            <span className={f.source_trust === "external" ? "chip bloqueo" : "chip"}>
+              {f.source_trust}
+            </span>{" "}
+            <span className="tenue">{f.etiqueta} · {f.autor}</span>
+          </div>
+          <div style={{ fontSize: "var(--texto-chico)" }}>{f.texto}</div>
+          {f.source_trust === "external" && (
+            <div style={{ fontSize: 13, marginTop: 6, color: "var(--bloqueo)" }}>
+              Lo escribió alguien de fuera. El sistema lo sabe y lo dice.
+            </div>
+          )}
+        </div>
+      ))}
       {!ev.resultado && (
         <div className="mono" style={{ fontSize: 13, color: "var(--aviso)", marginTop: 8 }}>
           sin respuesta capturada — misma causa probable

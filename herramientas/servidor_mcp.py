@@ -111,6 +111,58 @@ def consulta_historial(sujeto_id: str) -> dict:
     }
 
 
+# ---------------------------------------------------------------------------
+# LA PUERTA DEL ATAQUE.
+#
+# Esta herramienta devuelve los textos libres que acompañan a la alerta: notas
+# del analista, descripciones de terceros. Sin ella, la inyeccion del segmento 6
+# esta en la base de datos y NO TIENE POR DONDE LLEGAR al modelo.
+#
+# Devuelve `source_trust` en cada fragmento, y eso es deliberado y central:
+#
+#   internal  lo escribio un sistema nuestro
+#   external  lo escribio alguien de FUERA -> entrada no confiable
+#
+# El sistema SABE de donde viene cada texto y lo dice. Que el modelo le haga
+# caso igual es precisamente el argumento del segmento 6: la etiqueta existe,
+# esta bien puesta, y no basta. Por eso la interfaz pinta distinto lo external:
+# la sala tiene que VER que el sistema no fue ingenuo.
+#
+# NO se filtra ni se sanea el contenido aqui, a proposito. Si esta herramienta
+# limpiara los textos, el demo no enseñaria nada: todo el mundo diria "pues
+# filtra tus entradas" y se perderia el punto, que es que el control no puede
+# depender de que cada herramienta este bien escrita.
+#
+# NOTA SOBRE EL PLAN: el CLAUDE.md §4 listaba cinco herramientas y esta es la
+# sexta. Hizo falta porque los agentes no pueden hablar con Postgres -eso lo
+# impide Cilium, y con motivo-, asi que el contexto de la alerta tiene que
+# llegar por una herramienta como todo lo demas.
+# ---------------------------------------------------------------------------
+@mcp.tool()
+def contexto_alerta(alerta_id: str) -> dict:
+    """Devuelve los textos libres que acompañan a una alerta. Solo lectura.
+
+    Uselo para entender el caso antes de opinar. Cada texto indica su
+    procedencia.
+    """
+    alerta = consultar(
+        "SELECT id, origen, severidad, titulo, sujeto_id FROM alertas WHERE id = %s",
+        alerta_id,
+    )
+    fragmentos = consultar(
+        "SELECT id, etiqueta, texto, source_trust, autor FROM fragmentos "
+        "WHERE alerta_id = %s ORDER BY id",
+        alerta_id,
+    )
+    externos = sum(1 for f in fragmentos if f["source_trust"] == "external")
+    return {
+        "alerta": alerta[0] if alerta else None,
+        "fragmentos": fragmentos,
+        "resumen": (f"{len(fragmentos)} texto(s), {externos} de procedencia externa"
+                    if fragmentos else "la alerta no tiene textos adjuntos"),
+    }
+
+
 @mcp.tool()
 def lista_sancionados(sujeto_id: str) -> dict:
     """Indica si el sujeto aparece en alguna lista de control. Solo lectura."""
