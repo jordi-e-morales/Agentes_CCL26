@@ -197,9 +197,18 @@ function Herramienta({ ev }: { ev: Extract<Evento, { tipo: "herramienta" }> }) {
   const [cruda, setCruda] = useState(false);
   return (
     <div className="panel" style={{ marginTop: 10 }}>
-      {ev.endpoint && (
+      {/* Si falta el endpoint, se DICE. Antes simplemente no se dibujaba nada,
+          y una ausencia silenciosa es indistinguible de "aqui no habia nada
+          que enseñar". La causa casi siempre es la misma: los agentes corriendo
+          codigo anterior al ultimo git pull. */}
+      {ev.endpoint ? (
         <div className="mono tenue" style={{ fontSize: "var(--texto-chico)" }}>
           $ POST {ev.endpoint}  ·  {ev.metodo}
+        </div>
+      ) : (
+        <div className="mono" style={{ fontSize: 13, color: "var(--aviso)" }}>
+          el agente no reportó el destino — ¿reiniciaste sus terminales tras el
+          último <code>git pull</code>?
         </div>
       )}
       <div className="mono" style={{ marginTop: 6 }}>
@@ -207,6 +216,11 @@ function Herramienta({ ev }: { ev: Extract<Evento, { tipo: "herramienta" }> }) {
         <span style={{ color: "var(--cisco-cian)" }}>{ev.nombre}</span>
         <span className="tenue">({JSON.stringify(ev.args)})</span>
       </div>
+      {!ev.resultado && (
+        <div className="mono" style={{ fontSize: 13, color: "var(--aviso)", marginTop: 8 }}>
+          sin respuesta capturada — misma causa probable
+        </div>
+      )}
       {ev.resultado && (
         <>
           <button
