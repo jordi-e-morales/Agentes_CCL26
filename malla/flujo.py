@@ -1,0 +1,142 @@
+#!/usr/bin/env python3
+"""La deliberacion, como una secuencia de eventos que se pueden ir dibujando.
+
+POR QUE UN GENERADOR Y NO UNA FUNCION QUE DEVUELVE EL RESULTADO
+----------------------------------------------------------------
+Porque el valor didactico esta en la SECUENCIA, no en el resultado. Descubrir,
+elegir, despachar, recoger evidencia, saltar al vecino: eso es lo que hay que
+ver ocurrir. Un volcado final convierte un proceso en un parrafo, y un parrafo
+no enseña como funciona una malla.
+
+El CLAUDE.md pide que la interfaz haga visible el mecanismo. Esto es el
+mecanismo convertido en eventos.
+
+DEUDA ANOTADA
+-------------
+malla/router.py hace este mismo recorrido por su cuenta. Son dos
+implementaciones del mismo flujo y van a divergir. Se dejan separadas hoy para
+no tocar lo que ya funciona; cuando la interfaz este asentada, router.py
+deberia consumir este generador y quedarse solo con la impresion.
+"""
+
+import asyncio
+import json
+import os
+import urllib.request
+
+AGENTES = {
+    "investigador": os.getenv("URL_INVESTIGADOR", "http://localhost:7010"),
+    "defensor": os.getenv("URL_DEFENSOR", "http://localhost:7011"),
+}
+
+
+def _pedir(url: str, cuerpo: dict | None = None, espera: int = 300) -> dict:
+    datos = json.dumps(cuerpo).encode() if cuerpo else None
+    req = urllib.request.Request(
+        url, data=datos, method="POST" if cuerpo else "GET",
+        headers={"Content-Type": "application/json"} if cuerpo else {},
+    )
+    with urllib.request.urlopen(req, timeout=espera) as r:
+        return json.loads(r.read())
+
+
+async def _pedir_async(url, cuerpo=None, espera=300):
+    # urllib bloquea; en un generador asincrono eso congelaria la transmision.
+    return await asyncio.to_thread(_pedir, url, cuerpo, espera)
+
+
+async def descubrir() -> list[dict]:
+    """Lee las Agent Cards. Es el segmento 2 y no necesita el modelo."""
+    catalogo = []
+    for nombre, base in AGENTES.items():
+        try:
+            tarjeta = await _pedir_async(f"{base}/.well-known/agent-card.json", espera=10)
+            catalogo.append({"clave": nombre, "tarjeta": tarjeta, "vivo": True})
+        except Exception as e:
+            catalogo.append({"clave": nombre, "vivo": False, "error": type(e).__name__})
+    return catalogo
+
+
+async def deliberar(alerta: str, sujeto: str, busca: str = "riesgo"):
+    """Recorre la deliberacion emitiendo un evento por cada cosa que pasa."""
+
+    # ---- 1. DESCUBRIR ----------------------------------------------------
+    yield {"tipo": "paso", "n": 1, "nombre": "Descubrir",
+           "explicacion": "Nadie tiene la direccion de nadie: se lee de la tarjeta."}
+    catalogo = await descubrir()
+    for entrada in catalogo:
+        yield {"tipo": "agente", **entrada}
+
+    vivos = [c for c in catalogo if c["vivo"]]
+    if not vivos:
+        yield {"tipo": "error", "mensaje": "Ningun agente responde. Levantalos primero."}
+        return
+
+    # ---- 2. ELEGIR -------------------------------------------------------
+    yield {"tipo": "paso", "n": 2, "nombre": "Elegir",
+           "explicacion": f"La tarea necesita '{busca}'. Se busca en los tags, no en una lista."}
+    elegido = None
+    for c in vivos:
+        for skill in c["tarjeta"].get("skills", []):
+            if busca in skill.get("tags", []):
+                elegido = c
+                yield {"tipo": "eleccion", "agente": c["tarjeta"]["name"],
+                       "skill": skill["name"], "tags": skill.get("tags", [])}
+                break
+        if elegido:
+            break
+    if not elegido:
+        yield {"tipo": "error", "mensaje": f"Ningun agente declara '{busca}'."}
+        return
+
+    # ---- 3. DESPACHAR ----------------------------------------------------
+    yield {"tipo": "paso", "n": 3, "nombre": "Despachar",
+           "explicacion": "Un mensaje A2A directo al agente elegido. No hay bus en medio."}
+    tarea = (f"Revisa la alerta {alerta}, cuyo sujeto es {sujeto}. "
+             f"Recoge evidencia y da tu postura.")
+    peticion = {
+        "jsonrpc": "2.0", "id": "ui-1", "method": "message/send",
+        "params": {"message": {"kind": "message", "role": "user", "messageId": "m-ui-1",
+                               "parts": [{"kind": "text", "text": tarea}]}},
+    }
+    yield {"tipo": "sobre", "de": "router-tareas", "a": elegido["clave"], "cuerpo": peticion}
+    yield {"tipo": "esperando", "agente": elegido["clave"],
+           "explicacion": "El agente esta recogiendo evidencia y consultando a su vecino."}
+
+    respuesta = await _pedir_async(f"{AGENTES[elegido['clave']]}/a2a", peticion)
+
+    # ---- 4. LO QUE PASO DENTRO -------------------------------------------
+    r = respuesta.get("result", {})
+    meta = r.get("metadata", {})
+    texto = next((p["text"] for p in r.get("parts", []) if p.get("kind") == "text"), "")
+
+    yield {"tipo": "paso", "n": 4, "nombre": "La evidencia",
+           "explicacion": "Lo que el agente consulto de verdad, por MCP. No lo invento."}
+    for h in meta.get("herramientas_usadas", []):
+        yield {"tipo": "herramienta", "agente": elegido["clave"],
+               "nombre": h.get("tool"), "args": h.get("args"),
+               "resultado": h.get("resultado")}
+
+    salto = meta.get("salto_lateral")
+    if salto:
+        yield {"tipo": "paso", "n": 5, "nombre": "Salto lateral",
+               "explicacion": "Los dos agentes hablan entre si. El router no participa."}
+        yield {"tipo": "salto", "de": elegido["clave"], "a": salto.get("a"),
+               "sobre": salto.get("sobre_enviado")}
+        for h in salto.get("herramientas_del_vecino", []):
+            yield {"tipo": "herramienta", "agente": salto.get("a"),
+                   "nombre": h.get("tool"), "args": h.get("args"),
+                   "resultado": h.get("resultado")}
+
+    # ---- 5. LO QUE DIJERON -----------------------------------------------
+    yield {"tipo": "paso", "n": 6, "nombre": "La deliberacion",
+           "explicacion": "Dos posturas sobre las mismas filas."}
+    yield {"tipo": "argumento", "agente": elegido["clave"], "texto": texto.split("---")[0].strip()}
+    if salto and salto.get("texto"):
+        yield {"tipo": "argumento", "agente": salto.get("a"), "texto": salto["texto"]}
+
+    yield {"tipo": "consumo", "agente": elegido["clave"], "tokens": meta.get("consumo", {})}
+    if salto and salto.get("consumo_del_vecino"):
+        yield {"tipo": "consumo", "agente": salto.get("a"),
+               "tokens": salto["consumo_del_vecino"]}
+    yield {"tipo": "fin"}

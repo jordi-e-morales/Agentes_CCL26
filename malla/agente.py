@@ -256,7 +256,12 @@ class Agente:
                         res = await mcp.call_tool(t.function.name, args)
                     txt = resultado_mcp_a_texto(res)
                     print(f"  [{self.rol}] MCP <- {txt[:160]}", flush=True)
-                    llamadas.append({"tool": t.function.name, "args": args})
+                    # Se guarda el resultado y no solo la pregunta: la regla de
+                    # interfaz dice que si la evidencia no se ve, no se puede
+                    # saber si existe. Recortado, que algunas respuestas son
+                    # largas y esto va a pantalla.
+                    llamadas.append({"tool": t.function.name, "args": args,
+                                     "resultado": txt[:600]})
                     mensajes.append({"role": "tool", "tool_call_id": t.id, "content": txt})
 
                 respuesta = await asyncio.to_thread(self._preguntar, mensajes, consumo)
@@ -294,7 +299,19 @@ class Agente:
         with urllib.request.urlopen(req, timeout=180) as r:
             respuesta = json.loads(r.read())
         sobre("entra", f"{vecino} -> {self.rol}", respuesta)
-        return respuesta
+
+        # Se devuelve un resumen de TODO lo que hizo el vecino, no solo su
+        # texto. La interfaz dibuja la deliberacion entera, y sin esto la mitad
+        # de la historia -que el vecino tambien recogio evidencia- no llegaria.
+        meta_vecino = respuesta.get("result", {}).get("metadata", {})
+        return {
+            "a": vecino,
+            "sobre_enviado": peticion,
+            "sobre_recibido": respuesta,
+            "texto": texto_de(respuesta),
+            "herramientas_del_vecino": meta_vecino.get("herramientas_usadas", []),
+            "consumo_del_vecino": meta_vecino.get("consumo", {}),
+        }
 
 
 def construir(rol: str, url_mcp: str) -> Starlette:
@@ -319,16 +336,18 @@ def construir(rol: str, url_mcp: str) -> Starlette:
             del_vecino = await agente.consultar_al_vecino(mio["texto"])
 
         texto = mio["texto"]
+        metadata = {"herramientas_usadas": mio["herramientas_usadas"],
+                    "consumo": mio["consumo"]}
         if del_vecino:
-            texto += f"\n\n--- objecion de {agente.cfg['vecino']} ---\n{texto_de(del_vecino)}"
+            texto += f"\n\n--- objecion de {del_vecino['a']} ---\n{del_vecino['texto']}"
+            metadata["salto_lateral"] = del_vecino
 
         respuesta = {
             "jsonrpc": "2.0", "id": peticion.get("id"),
             "result": {"kind": "message", "role": "agent",
                        "messageId": str(uuid.uuid4())[:8],
                        "parts": [{"kind": "text", "text": texto}],
-                       "metadata": {"herramientas_usadas": mio["herramientas_usadas"],
-                                    "consumo": mio["consumo"]}},
+                       "metadata": metadata},
         }
         sobre("sale", f"{rol} ->", respuesta)
         return JSONResponse(respuesta)
