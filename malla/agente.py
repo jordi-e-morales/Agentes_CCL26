@@ -190,10 +190,19 @@ class Agente:
         self.tarjeta = json.loads(
             (RAIZ / "malla" / "tarjetas" / self.cfg["tarjeta"]).read_text(encoding="utf-8")
         )
-        self.consumo = {"tokens.prompt": 0, "tokens.completion": 0}
+        # OJO: el consumo NO vive aqui.
+        #
+        # Estaba en la instancia, y la instancia se crea UNA VEZ al arrancar el
+        # proceso, asi que acumulaba durante toda la vida del agente en vez de
+        # por tarea. Medido: una alerta reportaba 2978 tokens cuando habia
+        # gastado ~1492, porque le sumaba los de la alerta anterior. En el
+        # escenario eso es afirmar un costo falso, y el error crece con cada
+        # alerta que se procesa.
+        #
+        # Ahora cada tarea lleva su propio contador (ver opinar()).
 
     # -- el modelo ---------------------------------------------------------
-    def _preguntar(self, mensajes, herramientas=None):
+    def _preguntar(self, mensajes, consumo, herramientas=None):
         opcionales = {}
         if herramientas:
             opcionales["tools"] = herramientas
@@ -203,8 +212,8 @@ class Agente:
                 model=self.modelo, messages=mensajes, temperature=0.3, **opcionales
             )
             if r.usage:
-                self.consumo["tokens.prompt"] += r.usage.prompt_tokens
-                self.consumo["tokens.completion"] += r.usage.completion_tokens
+                consumo["tokens.prompt"] += r.usage.prompt_tokens
+                consumo["tokens.completion"] += r.usage.completion_tokens
                 trazas.anotar_tokens(span, self.modelo,
                                      r.usage.prompt_tokens, r.usage.completion_tokens)
             return r.choices[0].message
@@ -213,6 +222,9 @@ class Agente:
     async def opinar(self, tarea: str) -> dict:
         """Recoge evidencia con MCP y argumenta. Devuelve lo que hizo y lo que dijo."""
         llamadas = []
+        # Un contador POR TAREA. Es lo que hace que "esta alerta costo X" sea
+        # cierto, que es justo lo que promete el abstract de la sesion.
+        consumo = {"tokens.prompt": 0, "tokens.completion": 0}
         async with Client(self.url_mcp) as mcp:
             catalogo = await mcp.list_tools()
             herramientas = [
@@ -224,7 +236,8 @@ class Agente:
             mensajes = [{"role": "system", "content": self.cfg["prompt"]},
                         {"role": "user", "content": tarea}]
 
-            respuesta = await asyncio.to_thread(self._preguntar, mensajes, herramientas)
+            respuesta = await asyncio.to_thread(self._preguntar, mensajes, consumo,
+                                                herramientas)
 
             if respuesta.tool_calls:
                 mensajes.append({
@@ -246,10 +259,10 @@ class Agente:
                     llamadas.append({"tool": t.function.name, "args": args})
                     mensajes.append({"role": "tool", "tool_call_id": t.id, "content": txt})
 
-                respuesta = await asyncio.to_thread(self._preguntar, mensajes)
+                respuesta = await asyncio.to_thread(self._preguntar, mensajes, consumo)
 
         return {"agente": self.rol, "texto": respuesta.content or "",
-                "herramientas_usadas": llamadas, "consumo": dict(self.consumo)}
+                "herramientas_usadas": llamadas, "consumo": consumo}
 
     # -- el salto lateral --------------------------------------------------
     async def consultar_al_vecino(self, texto: str) -> dict | None:
