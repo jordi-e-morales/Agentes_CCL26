@@ -264,7 +264,25 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 9. Entorno virtual de Python
+# 9. Node, solo para compilar la interfaz
+# ---------------------------------------------------------------------------
+# La interfaz es React + Vite, asi que hace falta Node para COMPILARLA. Una vez
+# compilada, quien la sirve es el backend de Python: el dia del evento Node no
+# interviene en nada.
+#
+# Se usa el repositorio de NodeSource y no el de Ubuntu porque el de Ubuntu
+# suele traer una version vieja con la que Vite no compila.
+if ! command -v node >/dev/null 2>&1; then
+  log "Instalando Node (para compilar la interfaz)"
+  curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - >/dev/null
+  sudo apt-get install -y -qq nodejs
+  echo "Node $(node --version), npm $(npm --version)"
+else
+  log "Node ya estaba instalado ($(node --version))"
+fi
+
+# ---------------------------------------------------------------------------
+# 10. Entorno virtual de Python
 # ---------------------------------------------------------------------------
 # Un venv es una carpeta con su propio Python y sus propios paquetes. Todo lo
 # que instales dentro no toca el Python del sistema, que en Ubuntu ademas esta
@@ -308,7 +326,7 @@ echo "Para usarlo:  source $VENV/bin/activate"
 log "Listo"
 echo ""
 echo "Herramientas instaladas:"
-for cmd in docker kubectl kind cilium hubble helm; do
+for cmd in docker kubectl kind cilium hubble helm node; do
   if command -v "$cmd" >/dev/null 2>&1; then echo "  ok   $cmd"; else echo "  FALTA $cmd"; fi
 done
 if command -v nvidia-smi >/dev/null 2>&1; then

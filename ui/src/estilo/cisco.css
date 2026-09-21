@@ -1,0 +1,123 @@
+/* La paleta, entera y en un solo sitio.
+ *
+ * SI LOS COLORES NO SON LOS QUE TIENES EN LA CABEZA, SE CORRIGEN AQUI Y YA.
+ * Ningun componente escribe un color a mano: todos usan estas variables. Por
+ * eso cambiar la identidad visual es editar este archivo y nada mas.
+ *
+ * Estos son los de la paleta moderna de Cisco (cian sobre azul marino). Si tu
+ * plantilla de Cisco Live usa otros, sustituyelos aqui.
+ */
+:root {
+  /* --- Identidad --- */
+  --cisco-cian:        #00BCEB;   /* el color de Cisco, para lo que importa */
+  --cisco-cian-suave:  #6FD8F5;
+  --cisco-marino:      #0D274D;   /* fondo de las laminas de Cisco Live */
+  --cisco-marino-alto: #16335C;
+  --cisco-indigo:      #1E4471;
+
+  /* --- Semaforo. Se usan POCO y solo donde significan algo --- */
+  --ok:      #6ABF4B;   /* permitido, funciono */
+  --aviso:   #FBAB18;   /* atencion */
+  --bloqueo: #E2231A;   /* denegado, SIGKILL, 403 */
+
+  /* --- Superficies --- */
+  --fondo:        #081A33;
+  --panel:        #0D274D;
+  --panel-alto:   #16335C;
+  --borde:        #1E4471;
+  --borde-vivo:   #00BCEB;
+
+  /* --- Texto --- */
+  --texto:        #EAF4FB;
+  --texto-suave:  #9FB6CE;
+  --texto-tenue:  #5E7A9B;
+
+  /* --- Tipografia.
+   * Sin @import de Google Fonts: el dia del evento nada depende de internet.
+   * Si Inter esta instalada se usa; si no, la del sistema. Truco heredado de
+   * la demo v1, y es de los buenos. --- */
+  --fuente: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --fuente-mono: 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+
+  /* --- Tamaños.
+   * El CLAUDE.md §10 pide tipografia legible A CUATRO METROS. Por eso la base
+   * es 17px y no 14: esto se proyecta, no se lee en un portatil. --- */
+  --texto-base:   17px;
+  --texto-chico:  15px;
+  --texto-grande: 22px;
+  --titulo:       30px;
+
+  --radio: 10px;
+  --sombra: 0 2px 16px rgba(0, 0, 0, .35);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--fondo);
+  color: var(--texto);
+  font-family: var(--fuente);
+  font-size: var(--texto-base);
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+code, pre, .mono { font-family: var(--fuente-mono); }
+
+/* Barra superior */
+.cabecera {
+  display: flex; align-items: baseline; gap: 16px;
+  padding: 18px 28px;
+  background: var(--panel);
+  border-bottom: 3px solid var(--cisco-cian);
+}
+.cabecera h1 {
+  margin: 0; font-size: var(--titulo); font-weight: 600; letter-spacing: -.02em;
+}
+.cabecera .sub { color: var(--texto-suave); font-size: var(--texto-chico); }
+
+/* Paneles */
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--borde);
+  border-radius: var(--radio);
+  padding: 18px 22px;
+  box-shadow: var(--sombra);
+}
+
+/* Cada paso de la secuencia. El numero grande a la izquierda es lo que deja
+ * seguir el hilo desde el fondo de la sala. */
+.paso { display: flex; gap: 18px; margin: 26px 0 12px; align-items: flex-start; }
+.paso .n {
+  flex: 0 0 auto; width: 44px; height: 44px; border-radius: 50%;
+  background: var(--cisco-cian); color: var(--cisco-marino);
+  display: grid; place-items: center;
+  font-weight: 700; font-size: var(--texto-grande);
+}
+.paso h2 { margin: 0; font-size: var(--texto-grande); font-weight: 600; }
+/* La explicacion en una frase. Regla de interfaz: si no se puede explicar asi,
+ * el visual no va. */
+.paso .explicacion { margin: 2px 0 0; color: var(--texto-suave); font-size: var(--texto-chico); }
+
+/* Etiquetas */
+.chip {
+  display: inline-block; padding: 2px 10px; border-radius: 999px;
+  font-size: 13px; font-weight: 500;
+  background: var(--panel-alto); color: var(--cisco-cian-suave);
+  border: 1px solid var(--borde);
+}
+.chip.ok      { color: var(--ok);      border-color: var(--ok); }
+.chip.bloqueo { color: var(--bloqueo); border-color: var(--bloqueo); }
+
+/* Bloques de codigo: los sobres A2A y los resultados de las herramientas */
+pre.sobre {
+  background: #05101F; border: 1px solid var(--borde);
+  border-left: 3px solid var(--cisco-cian);
+  border-radius: 8px; padding: 14px 16px; margin: 10px 0 0;
+  font-size: var(--texto-chico); overflow-x: auto;
+  max-height: 340px;
+}
+
+.tenue { color: var(--texto-tenue); }
+.suave { color: var(--texto-suave); }
