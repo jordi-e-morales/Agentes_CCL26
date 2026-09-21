@@ -159,7 +159,14 @@ async def deliberar(alerta: str, sujeto: str, busca: str = "riesgo"):
 
     yield {"tipo": "paso", "n": 4, "nombre": "La evidencia",
            "explicacion": "Lo que el agente consulto de verdad, por MCP. No lo invento."}
-    for h in meta.get("herramientas_usadas", []):
+    usadas = meta.get("herramientas_usadas", [])
+    if not usadas:
+        # Que un agente NO consulte nada es un hecho del caso, no un hueco de
+        # la interfaz. Antes simplemente no se dibujaba y parecia que faltaba
+        # algo; ahora se dice, porque un agente que opina sin mirar evidencia
+        # es precisamente lo que el segmento 6 quiere que la sala note.
+        yield {"tipo": "sin_herramientas", "agente": elegido["clave"]}
+    for h in usadas:
         yield {"tipo": "herramienta", "agente": elegido["clave"],
                "nombre": h.get("tool"), "args": h.get("args"),
                "resultado": h.get("resultado"),
@@ -171,6 +178,8 @@ async def deliberar(alerta: str, sujeto: str, busca: str = "riesgo"):
                "explicacion": "Los dos agentes hablan entre si. El router no participa."}
         yield {"tipo": "salto", "de": elegido["clave"], "a": salto.get("a"),
                "sobre": salto.get("sobre_enviado")}
+        if not salto.get("herramientas_del_vecino"):
+            yield {"tipo": "sin_herramientas", "agente": salto.get("a")}
         for h in salto.get("herramientas_del_vecino", []):
             yield {"tipo": "herramienta", "agente": salto.get("a"),
                    "nombre": h.get("tool"), "args": h.get("args"),

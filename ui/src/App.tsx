@@ -25,6 +25,7 @@ type Evento =
   | { tipo: "salto"; de: string; a: string; sobre: any }
   | { tipo: "argumento"; agente: string; texto: string }
   | { tipo: "sintesis"; texto: string }
+  | { tipo: "sin_herramientas"; agente: string }
   | { tipo: "consumo"; agente: string; tokens: Record<string, number> }
   | { tipo: "error"; mensaje: string }
   | { tipo: "fin" };
@@ -477,6 +478,21 @@ function Fila({ ev }: { ev: Evento }) {
         <div className="panel" style={{ marginTop: 10, borderLeft: "3px solid var(--cisco-cian)" }}>
           <div style={{ fontWeight: 600, marginBottom: 6 }}>{ev.agente}</div>
           <div>{ev.texto}</div>
+        </div>
+      );
+
+    case "sin_herramientas":
+      /* Opinar sin mirar evidencia no es un hueco de la interfaz: es un hecho
+         del caso, y de los que la sala tiene que notar. */
+      return (
+        <div className="panel" style={{ marginTop: 10, borderColor: "var(--aviso)" }}>
+          <span className="chip" style={{ color: "var(--aviso)", borderColor: "var(--aviso)" }}>
+            {ev.agente}
+          </span>{" "}
+          <strong>no consultó ninguna herramienta</strong>
+          <div className="suave" style={{ fontSize: "var(--texto-chico)", marginTop: 4 }}>
+            Opinó sin recoger evidencia.
+          </div>
         </div>
       );
 
