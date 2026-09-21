@@ -133,6 +133,43 @@ def mensaje_a2a(texto: str) -> dict:
     }
 
 
+def resultado_mcp_a_texto(res) -> str:
+    """Saca el contenido de un CallToolResult para devolverselo al modelo.
+
+    CUIDADO CON ESTA FUNCION. Su primera version era:
+
+        json.dumps(getattr(res, "structured_content", None) or {})
+
+    y tenia un fallo SILENCIOSO: cuando structured_content venia vacio, eso
+    producia la cadena "{}", que NO es falsa, asi que ningun respaldo saltaba.
+    El modelo recibia un objeto vacio por cada herramienta.
+
+    Y lo peor es como se veia: los agentes deliberaban con elegancia sobre la
+    ausencia de datos -"no se han encontrado antecedentes"- asi que parecia que
+    todo funcionaba. Un demo entero de dos agentes debatiendo sobre la nada.
+
+    Por eso aqui se comprueba que el contenido SEA algo, en los dos sitios
+    posibles, y se grita si no lo es.
+    """
+    estructurado = getattr(res, "structured_content", None)
+    if estructurado:
+        return json.dumps(estructurado, ensure_ascii=False)
+
+    partes = []
+    for bloque in getattr(res, "content", None) or []:
+        texto = getattr(bloque, "text", None)
+        if texto:
+            partes.append(texto)
+    if partes:
+        return "\n".join(partes)
+
+    # Si no hay nada en ninguno de los dos sitios, es un problema de verdad y no
+    # se disimula: el modelo tiene que saber que la herramienta no devolvio nada,
+    # y la consola tambien.
+    print("  AVISO: la herramienta no devolvio contenido", flush=True)
+    return "ERROR: la herramienta no devolvio contenido"
+
+
 def texto_de(respuesta: dict) -> str:
     """Saca el texto de una respuesta A2A, sea cual sea su envoltura."""
     r = respuesta.get("result", respuesta)
@@ -204,8 +241,8 @@ class Agente:
                     print(f"  [{self.rol}] MCP -> {t.function.name}({args})", flush=True)
                     with trazas.span_tool(self.tracer, t.function.name, t.id):
                         res = await mcp.call_tool(t.function.name, args)
-                    txt = json.dumps(getattr(res, "structured_content", None)
-                                     or {}, ensure_ascii=False) or "(vacio)"
+                    txt = resultado_mcp_a_texto(res)
+                    print(f"  [{self.rol}] MCP <- {txt[:160]}", flush=True)
                     llamadas.append({"tool": t.function.name, "args": args})
                     mensajes.append({"role": "tool", "tool_call_id": t.id, "content": txt})
 
