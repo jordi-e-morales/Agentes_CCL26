@@ -78,6 +78,37 @@ async def agentes(_req):
     return JSONResponse(await flujo.descubrir())
 
 
+async def gpu(_req):
+    """La salida CRUDA de nvidia-smi.
+
+    POR QUE ESTO VALE MAS DE LO QUE PARECE
+    ---------------------------------------
+    Es el segmento 1 hecho evidencia. Mientras los dos agentes deliberan, en la
+    tabla se ve UN SOLO proceso de Python ocupando la GPU. No dos.
+
+    Ahi esta el insight #1 sin necesidad de explicarlo: los agentes no son
+    modelos. Son dos prompts y dos identidades sobre los mismos pesos, en el
+    mismo proceso, en la misma tarjeta. La sala lo ve en una tabla que no
+    dibujamos nosotros.
+
+    Se devuelve tal cual la imprime nvidia-smi, sin reformatear: es de las
+    pocas pantallas que un arquitecto reconoce al instante.
+    """
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "nvidia-smi",
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
+        )
+        salida, _ = await asyncio.wait_for(proc.communicate(), timeout=8)
+        return JSONResponse({"hay_gpu": True, "salida": salida.decode(errors="replace")})
+    except FileNotFoundError:
+        return JSONResponse({"hay_gpu": False,
+                             "salida": "nvidia-smi no esta en esta maquina."})
+    except Exception as e:
+        return JSONResponse({"hay_gpu": False,
+                             "salida": f"no se pudo consultar la GPU: {type(e).__name__}: {e}"})
+
+
 async def salud(_req):
     return JSONResponse({"ok": True})
 
@@ -95,6 +126,7 @@ async def indice(_req):
 
 rutas = [
     Route("/api/salud", salud),
+    Route("/api/gpu", gpu),
     Route("/api/agentes", agentes),
     Route("/api/deliberar", deliberar),
 ]

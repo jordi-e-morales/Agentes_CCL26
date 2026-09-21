@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import "./estilo/cisco.css";
 
 /* La deliberacion, dibujada segun ocurre.
@@ -20,7 +20,8 @@ type Evento =
   | { tipo: "eleccion"; agente: string; skill: string; tags: string[] }
   | { tipo: "sobre"; de: string; a: string; cuerpo: any }
   | { tipo: "esperando"; agente: string; explicacion: string }
-  | { tipo: "herramienta"; agente: string; nombre: string; args: any; resultado?: string }
+  | { tipo: "herramienta"; agente: string; nombre: string; args: any;
+      resultado?: string; endpoint?: string; metodo?: string }
   | { tipo: "salto"; de: string; a: string; sobre: any }
   | { tipo: "argumento"; agente: string; texto: string }
   | { tipo: "consumo"; agente: string; tokens: Record<string, number> }
@@ -94,6 +95,8 @@ export default function App() {
           cambia es el caso.
         </p>
 
+        <GPU activo={corriendo} />
+
         {eventos.length === 0 && !corriendo && (
           <div className="panel" style={{ marginTop: 24 }}>
             <p style={{ margin: 0 }} className="suave">
@@ -159,6 +162,92 @@ ruta       : ${ev.tarjeta.supportedInterfaces?.[0]?.url ?? "-"}`}
   );
 }
 
+/* Una llamada a herramienta por MCP.
+ *
+ * Mismo tratamiento que la tarjeta del agente: el destino y el metodo arriba en
+ * monoespaciada, y la respuesta CRUDA desplegable.
+ *
+ * La respuesta importa tanto como la pregunta. Si solo se viera lo que se pidio,
+ * no habria forma de saber si la evidencia existe o si el modelo la relleno. No
+ * es teorico: paso dos veces, y las dos los agentes razonaron con elegancia
+ * sobre datos vacios sin que nada pareciera roto.
+ */
+function Herramienta({ ev }: { ev: Extract<Evento, { tipo: "herramienta" }> }) {
+  const [cruda, setCruda] = useState(false);
+  return (
+    <div className="panel" style={{ marginTop: 10 }}>
+      {ev.endpoint && (
+        <div className="mono tenue" style={{ fontSize: "var(--texto-chico)" }}>
+          $ POST {ev.endpoint}  ·  {ev.metodo}
+        </div>
+      )}
+      <div className="mono" style={{ marginTop: 6 }}>
+        <span className="chip">{ev.agente}</span>{" "}
+        <span style={{ color: "var(--cisco-cian)" }}>{ev.nombre}</span>
+        <span className="tenue">({JSON.stringify(ev.args)})</span>
+      </div>
+      {ev.resultado && (
+        <>
+          <button
+            onClick={() => setCruda(!cruda)}
+            style={{
+              marginTop: 10, background: "transparent",
+              border: "1px solid var(--borde)", borderRadius: 6,
+              color: "var(--cisco-cian)", padding: "4px 12px",
+              fontSize: 13, fontFamily: "var(--fuente)", cursor: "pointer",
+            }}
+          >
+            {cruda ? "ocultar la respuesta" : "ver la respuesta cruda"}
+          </button>
+          {cruda && <pre className="sobre">{ev.resultado}</pre>}
+        </>
+      )}
+    </div>
+  );
+}
+
+/* El panel de la GPU.
+ *
+ * ESTO VALE MAS DE LO QUE PARECE. Mientras los dos agentes deliberan, en la
+ * tabla se ve UN SOLO proceso de Python ocupando la tarjeta. No dos.
+ *
+ * Ahi esta el insight #1 sin tener que explicarlo: los agentes no son modelos.
+ * Son dos prompts y dos identidades sobre los mismos pesos, en el mismo
+ * proceso, en la misma GPU. Y lo dice una tabla que no dibujamos nosotros.
+ */
+function GPU({ activo }: { activo: boolean }) {
+  const [salida, setSalida] = useState("consultando…");
+
+  useEffect(() => {
+    let vivo = true;
+    async function leer() {
+      try {
+        const r = await fetch("/api/gpu");
+        const d = await r.json();
+        if (vivo) setSalida(d.salida);
+      } catch {
+        if (vivo) setSalida("no se pudo consultar la GPU");
+      }
+    }
+    leer();
+    // Mas rapido mientras se delibera: ahi es cuando la memoria se mueve y
+    // cuando merece la pena estar mirando.
+    const t = setInterval(leer, activo ? 1500 : 6000);
+    return () => { vivo = false; clearInterval(t); };
+  }, [activo]);
+
+  return (
+    <div className="panel" style={{ marginTop: 18 }}>
+      <div style={{ fontWeight: 600 }}>La GPU, en vivo</div>
+      <p className="suave" style={{ fontSize: "var(--texto-chico)", margin: "2px 0 0" }}>
+        Un solo proceso sirve a los dos agentes. Lo que los hace distintos no
+        está aquí: está en su prompt y en su identidad.
+      </p>
+      <pre className="sobre mono" style={{ fontSize: 13, lineHeight: 1.35 }}>{salida}</pre>
+    </div>
+  );
+}
+
 function Fila({ ev }: { ev: Evento }) {
   switch (ev.tipo) {
     case "paso":
@@ -204,18 +293,7 @@ function Fila({ ev }: { ev: Evento }) {
       );
 
     case "herramienta":
-      /* La pregunta Y la respuesta. Si solo se viera la pregunta, no habria
-         forma de saber si la evidencia existe o si el modelo la invento. */
-      return (
-        <div className="panel" style={{ marginTop: 10 }}>
-          <div>
-            <span className="chip">{ev.agente}</span>{" "}
-            <code style={{ color: "var(--cisco-cian)" }}>{ev.nombre}</code>
-            <code className="tenue">({JSON.stringify(ev.args)})</code>
-          </div>
-          {ev.resultado && <pre className="sobre">{ev.resultado}</pre>}
-        </div>
-      );
+      return <Herramienta ev={ev} />;
 
     case "salto":
       return (

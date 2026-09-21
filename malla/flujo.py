@@ -121,7 +121,8 @@ async def deliberar(alerta: str, sujeto: str, busca: str = "riesgo"):
     for h in meta.get("herramientas_usadas", []):
         yield {"tipo": "herramienta", "agente": elegido["clave"],
                "nombre": h.get("tool"), "args": h.get("args"),
-               "resultado": h.get("resultado")}
+               "resultado": h.get("resultado"),
+               "endpoint": h.get("endpoint"), "metodo": h.get("metodo")}
 
     salto = meta.get("salto_lateral")
     if salto:
@@ -132,7 +133,8 @@ async def deliberar(alerta: str, sujeto: str, busca: str = "riesgo"):
         for h in salto.get("herramientas_del_vecino", []):
             yield {"tipo": "herramienta", "agente": salto.get("a"),
                    "nombre": h.get("tool"), "args": h.get("args"),
-                   "resultado": h.get("resultado")}
+                   "resultado": h.get("resultado"),
+                   "endpoint": h.get("endpoint"), "metodo": h.get("metodo")}
 
     # ---- 5. LO QUE DIJERON -----------------------------------------------
     yield {"tipo": "paso", "n": 6, "nombre": "La deliberacion",

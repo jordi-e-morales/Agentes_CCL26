@@ -260,8 +260,18 @@ class Agente:
                     # interfaz dice que si la evidencia no se ve, no se puede
                     # saber si existe. Recortado, que algunas respuestas son
                     # largas y esto va a pantalla.
+                    # Se guarda tambien A DONDE fue y COMO. Todo esto es
+                    # cierto y verificable: Hubble registro ese POST /mcp, y
+                    # "tools/call" es el metodo JSON-RPC que MCP usa.
+                    #
+                    # No se fabrica el sobre JSON-RPC completo porque el SDK lo
+                    # construye por dentro y no lo tenemos capturado. Enseñar
+                    # una reconstruccion como si fuera lo que viajo seria
+                    # justo lo que el §6 prohibe.
                     llamadas.append({"tool": t.function.name, "args": args,
-                                     "resultado": txt[:600]})
+                                     "resultado": txt[:600],
+                                     "endpoint": self.url_mcp,
+                                     "metodo": "tools/call"})
                     mensajes.append({"role": "tool", "tool_call_id": t.id, "content": txt})
 
                 respuesta = await asyncio.to_thread(self._preguntar, mensajes, consumo)
