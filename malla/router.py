@@ -78,7 +78,7 @@ def main():
             print(f"  {tarjeta['name']}")
             print(f"    sabe hacer : {skill['name']}")
             print(f"    tags       : {', '.join(skill.get('tags', []))}")
-            print(f"    se le entra: {tarjeta['supportedInterfaces'][0]['url']}")
+            print(f"    ruta       : {tarjeta['supportedInterfaces'][0]['url']}")
 
     if not catalogo:
         print("\nNingun agente responde. Levantalos primero (ver malla/README.md).")

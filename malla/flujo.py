@@ -49,11 +49,17 @@ async def descubrir() -> list[dict]:
     """Lee las Agent Cards. Es el segmento 2 y no necesita el modelo."""
     catalogo = []
     for nombre, base in AGENTES.items():
+        # La peticion se guarda para poder ENSEÑARLA. Descubrir un agente es
+        # literalmente esto: un GET a una ruta conocida. Que se vea el comando
+        # quita la magia, y quitar la magia es el proposito de la sesion.
+        url = f"{base}/.well-known/agent-card.json"
         try:
-            tarjeta = await _pedir_async(f"{base}/.well-known/agent-card.json", espera=10)
-            catalogo.append({"clave": nombre, "tarjeta": tarjeta, "vivo": True})
+            tarjeta = await _pedir_async(url, espera=10)
+            catalogo.append({"clave": nombre, "url": url, "peticion": f"GET {url}",
+                             "tarjeta": tarjeta, "vivo": True})
         except Exception as e:
-            catalogo.append({"clave": nombre, "vivo": False, "error": type(e).__name__})
+            catalogo.append({"clave": nombre, "url": url, "peticion": f"GET {url}",
+                             "vivo": False, "error": type(e).__name__})
     return catalogo
 
 

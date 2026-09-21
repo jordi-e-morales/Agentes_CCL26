@@ -15,7 +15,8 @@ import "./estilo/cisco.css";
 
 type Evento =
   | { tipo: "paso"; n: number; nombre: string; explicacion: string }
-  | { tipo: "agente"; clave: string; tarjeta?: any; vivo: boolean; error?: string }
+  | { tipo: "agente"; clave: string; url: string; peticion: string;
+      tarjeta?: any; vivo: boolean; error?: string }
   | { tipo: "eleccion"; agente: string; skill: string; tags: string[] }
   | { tipo: "sobre"; de: string; a: string; cuerpo: any }
   | { tipo: "esperando"; agente: string; explicacion: string }
@@ -108,6 +109,56 @@ export default function App() {
   );
 }
 
+/* La tarjeta de un agente.
+ *
+ * Se dibuja con tipografia de terminal a proposito. Descubrir un agente es
+ * literalmente un GET a una ruta conocida, y enseñar el comando quita la
+ * magia: la sala ve que no hay nada escondido, solo un archivo servido en un
+ * sitio acordado.
+ *
+ * Debajo, la tarjeta CRUDA. Es lo que de verdad viaja; el resumen de arriba es
+ * una comodidad, no la fuente.
+ */
+function Tarjeta({ ev }: { ev: Extract<Evento, { tipo: "agente" }> }) {
+  const [cruda, setCruda] = useState(false);
+
+  return (
+    <div className="panel" style={{ marginTop: 10 }}>
+      <div className="mono tenue" style={{ fontSize: "var(--texto-chico)" }}>
+        $ curl {ev.url}
+      </div>
+
+      {!ev.vivo ? (
+        <div style={{ marginTop: 10 }}>
+          <strong>{ev.clave}</strong> <span className="chip bloqueo">no responde</span>
+        </div>
+      ) : (
+        <>
+          <pre className="sobre mono" style={{ marginTop: 10 }}>
+{`nombre     : ${ev.tarjeta.name}
+sabe hacer : ${ev.tarjeta.skills?.[0]?.name ?? "-"}
+tags       : ${(ev.tarjeta.skills?.[0]?.tags ?? []).join(", ")}
+ruta       : ${ev.tarjeta.supportedInterfaces?.[0]?.url ?? "-"}`}
+          </pre>
+
+          <button
+            onClick={() => setCruda(!cruda)}
+            style={{
+              marginTop: 10, background: "transparent",
+              border: "1px solid var(--borde)", borderRadius: 6,
+              color: "var(--cisco-cian)", padding: "4px 12px",
+              fontSize: 13, fontFamily: "var(--fuente)", cursor: "pointer",
+            }}
+          >
+            {cruda ? "ocultar" : "ver la tarjeta cruda"}
+          </button>
+          {cruda && <pre className="sobre">{JSON.stringify(ev.tarjeta, null, 2)}</pre>}
+        </>
+      )}
+    </div>
+  );
+}
+
 function Fila({ ev }: { ev: Evento }) {
   switch (ev.tipo) {
     case "paso":
@@ -122,26 +173,7 @@ function Fila({ ev }: { ev: Evento }) {
       );
 
     case "agente":
-      if (!ev.vivo) {
-        return (
-          <div className="panel" style={{ marginTop: 10, borderColor: "var(--bloqueo)" }}>
-            <strong>{ev.clave}</strong> <span className="chip bloqueo">no responde</span>
-          </div>
-        );
-      }
-      return (
-        <div className="panel" style={{ marginTop: 10 }}>
-          <div style={{ fontWeight: 600 }}>{ev.tarjeta.name}</div>
-          <div className="suave" style={{ fontSize: "var(--texto-chico)" }}>
-            {ev.tarjeta.description}
-          </div>
-          <div style={{ marginTop: 8, display: "flex", gap: 6, flexWrap: "wrap" }}>
-            {ev.tarjeta.skills?.[0]?.tags?.map((t: string) => (
-              <span key={t} className="chip">{t}</span>
-            ))}
-          </div>
-        </div>
-      );
+      return <Tarjeta ev={ev} />;
 
     case "eleccion":
       return (
