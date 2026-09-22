@@ -534,13 +534,23 @@ propio plan ya había decidido de antemano qué sobrevive.
 | Fase | Entregable que corre | Estado |
 |---|---|---|
 | 0 | Entorno, esquema de datos, motor de inferencia | **Hecho y verificado** |
-| A | Postgres con el esquema y datos de los dos dominios | **Hecho** (`datos/`) |
-| B | Servidor MCP con las cinco tools | **Hecho y probado** de punta a punta (`herramientas/`) |
-| C | Router por tarea y dos agentes con A2A, con salto lateral | Pendiente. El puente ya está escrito (`spike-mcp/agente.py`) |
-| D | Agent Cards y registro OASF | Un JSON |
-| E | Cilium L7 y Tetragon | **Hechas y verificadas** sobre el ejecutor real (`seguridad/`) |
-| F | Tokens en pantalla | Barato |
-| G | **Best effort:** OTel → Splunk, AI Defense | Si sobra tiempo |
+| A | Postgres con los dos dominios | **Hecho** (`datos/`) |
+| B | Servidor MCP con las seis tools | **Hecho y probado** (`herramientas/`) |
+| C | Router, dos agentes A2A y salto lateral | **Hecho y probado** (`malla/`) |
+| D | Agent Cards | **Hecho y validadas** contra el SDK de A2A |
+| E | Cilium L7 y Tetragon | **Hechas y verificadas** sobre el ejecutor real |
+| F | Tokens en pantalla | **Hecho**, por tarea y en la interfaz |
+| — | **La interfaz** (no estaba en el plan; debió estarlo) | **Hecha** (`ui/`) |
+| G | **Best effort:** OTel → Splunk, AI Defense | Escrito y **sin ejecutar** |
+
+### Lo que falta, al 2026-09-21
+
+| | Qué | Por qué importa |
+|---|---|---|
+| 1 | **Que el ataque llegue a la acción** | La inyección ya domina el razonamiento de los dos agentes, pero todavía no provoca la llamada a `exporta_evidencia` con algo fuera de la lista blanca. Sin eso, el SIGKILL y el 403 no se encadenan con el resto |
+| 2 | **Las trazas, ejecutadas** | Escritas y nunca corridas. Es el segmento 5 entero |
+| 3 | **La migración** | El orden de `GUIA.md` es el procedimiento; falta hacerlo |
+| 4 | AI Defense | Best effort, y depende de la red del recinto |
 
 ### Lo que falta para que los segmentos 4 y 6 sean enseñables
 
