@@ -95,13 +95,33 @@ async def gpu(_req):
     Se devuelve tal cual la imprime nvidia-smi, sin reformatear: es de las
     pocas pantallas que un arquitecto reconoce al instante.
     """
-    try:
+    async def correr(*cmd):
         proc = await asyncio.create_subprocess_exec(
-            "nvidia-smi",
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
-        )
+            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
         salida, _ = await asyncio.wait_for(proc.communicate(), timeout=8)
-        return JSONResponse({"hay_gpu": True, "salida": salida.decode(errors="replace")})
+        return salida.decode(errors="replace")
+
+    try:
+        salida = await correr("nvidia-smi")
+        # Ademas de la tabla cruda, las CIFRAS SUELTAS.
+        #
+        # La tabla es la prueba -nadie sospecha de nvidia-smi- pero proyectada
+        # obliga a buscar el dato entre marcos ascii. Las cifras van aparte para
+        # poder ponerlas grandes, y la tabla se queda debajo como respaldo.
+        csv = await correr(
+            "nvidia-smi",
+            "--query-gpu=utilization.gpu,memory.used,memory.total,temperature.gpu",
+            "--format=csv,noheader,nounits")
+        campos = [c.strip() for c in csv.strip().split(",")]
+        cifras = {}
+        if len(campos) >= 4:
+            cifras = {"util": campos[0], "usada": campos[1],
+                      "total": campos[2], "temp": campos[3]}
+        # Cuantos procesos usan la GPU. Que sea UNO es el insight #1.
+        procs = await correr("nvidia-smi",
+                             "--query-compute-apps=pid", "--format=csv,noheader")
+        cifras["procesos"] = len([l for l in procs.splitlines() if l.strip()])
+        return JSONResponse({"hay_gpu": True, "salida": salida, "cifras": cifras})
     except FileNotFoundError:
         return JSONResponse({"hay_gpu": False,
                              "salida": "nvidia-smi no esta en esta maquina."})
@@ -141,6 +161,58 @@ def version_del_flujo() -> str:
     ).hexdigest()[:12]
 
 
+async def eventos_kernel(_req):
+    """Lo que Tetragon vio: los procesos que el kernel mato.
+
+    Mismas dos trampas que documenta seguridad/ver-eventos.sh y por las que
+    `tetra getevents` a secas no sirve: transmite en vivo en vez de consultar el
+    pasado, y hay un Tetragon por NODO que solo ve lo de su maquina.
+
+    Aqui se lee el archivo de exportacion del nodo donde vive el servidor de
+    herramientas, que es donde ocurren los exec que importan.
+    """
+    async def kubectl(*args):
+        proc = await asyncio.create_subprocess_exec(
+            "kubectl", *args,
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
+        salida, _ = await asyncio.wait_for(proc.communicate(), timeout=10)
+        return salida.decode(errors="replace").strip()
+
+    try:
+        nodo = await kubectl("-n", "agentes", "get", "pod", "-l", "app=servidor-mcp",
+                             "-o", "jsonpath={.items[0].spec.nodeName}")
+        if not nodo:
+            return JSONResponse({"hay": False, "motivo": "el servidor MCP no esta desplegado"})
+        pod = await kubectl("-n", "kube-system", "get", "pod",
+                            "-l", "app.kubernetes.io/name=tetragon",
+                            "--field-selector", f"spec.nodeName={nodo}",
+                            "-o", "jsonpath={.items[0].metadata.name}")
+        if not pod:
+            return JSONResponse({"hay": False, "motivo": f"no hay Tetragon en {nodo}"})
+        crudo = await kubectl("-n", "kube-system", "exec", pod, "-c", "tetragon", "--",
+                              "sh", "-c", "cat /var/run/cilium/tetragon/eventos.log")
+        muertes = []
+        for linea in crudo.splitlines():
+            try:
+                ev = json.loads(linea)
+            except Exception:
+                continue
+            k = ev.get("process_kprobe")
+            if not k or k.get("action") != "KPROBE_ACTION_SIGKILL":
+                continue
+            muertes.append({
+                "hora": ev.get("time"),
+                "pod": (k.get("process", {}).get("pod") or {}).get("name"),
+                "ejecutaba": k.get("process", {}).get("binary"),
+                "quiso_correr": (k.get("args") or [{}])[0]
+                                .get("linux_binprm_arg", {}).get("path"),
+                "politica": k.get("policy_name"),
+            })
+        return JSONResponse({"hay": True, "nodo": nodo, "muertes": muertes[-8:]})
+    except Exception as e:
+        return JSONResponse({"hay": False, "motivo": f"{type(e).__name__}: {e}"})
+
+
 async def salud(_req):
     return JSONResponse({"ok": True, "version_flujo": version_del_flujo()})
 
@@ -159,6 +231,7 @@ async def indice(_req):
 rutas = [
     Route("/api/salud", salud),
     Route("/api/gpu", gpu),
+    Route("/api/eventos-kernel", eventos_kernel),
     Route("/api/prompts", prompts),
     Route("/api/agentes", agentes),
     Route("/api/deliberar", deliberar),

@@ -132,6 +132,7 @@ export default function App() {
         <aside className="lateral">
           <GPU activo={corriendo} />
           <Prompts />
+          <Kernel activo={corriendo} />
         </aside>
       </div>
     </>
@@ -337,7 +338,7 @@ function Prompts() {
   return (
     <div className="panel" style={{ marginTop: 18 }}>
       <div style={{ fontWeight: 600 }}>
-        Lo único que los hace distintos
+        Identidad de los Agentes
         <Info>
           Los dos agentes corren sobre los mismos pesos, en el mismo proceso y
           en la misma GPU. No hay dos modelos. Lo que separa al que acusa del
@@ -377,6 +378,7 @@ function Prompts() {
 
 function GPU({ activo }: { activo: boolean }) {
   const [salida, setSalida] = useState("consultando…");
+  const [cifras, setCifras] = useState<any>(null);
 
   useEffect(() => {
     let vivo = true;
@@ -384,7 +386,7 @@ function GPU({ activo }: { activo: boolean }) {
       try {
         const r = await fetch("/api/gpu");
         const d = await r.json();
-        if (vivo) setSalida(d.salida);
+        if (vivo) { setSalida(d.salida); setCifras(d.cifras ?? null); }
       } catch {
         if (vivo) setSalida("no se pudo consultar la GPU");
       }
@@ -407,7 +409,96 @@ function GPU({ activo }: { activo: boolean }) {
           Y esta tabla no la dibujamos nosotros.
         </Info>
       </div>
-      <pre className="sobre mono" style={{ fontSize: 13, lineHeight: 1.35 }}>{salida}</pre>
+      {/* Las cifras, en grande. La tabla cruda debajo es la prueba -nadie
+          sospecha de nvidia-smi- pero proyectada obliga a buscar el dato entre
+          marcos ascii. Lo importante se lee de lejos; lo que lo respalda, si
+          alguien quiere, esta justo debajo. */}
+      {cifras && (
+        <div style={{ display: "flex", gap: 18, marginTop: 10, flexWrap: "wrap" }}>
+          <Cifra valor={`${cifras.util}%`} etiqueta="utilización" />
+          <Cifra valor={`${Math.round(cifras.usada / 1024)} GB`}
+                 etiqueta={`de ${Math.round(cifras.total / 1024)} GB`} />
+          <Cifra valor={cifras.procesos} etiqueta="proceso(s)"
+                 resalta={cifras.procesos === 1} />
+        </div>
+      )}
+      <pre className="sobre mono gpu-tabla">{salida}</pre>
+    </div>
+  );
+}
+
+function Cifra({ valor, etiqueta, resalta }: {
+  valor: any; etiqueta: string; resalta?: boolean;
+}) {
+  return (
+    <div>
+      <div style={{
+        fontSize: 26, fontWeight: 700, lineHeight: 1.1,
+        color: resalta ? "var(--cisco-cian)" : "var(--texto)",
+      }}>{valor}</div>
+      <div className="tenue" style={{ fontSize: 12 }}>{etiqueta}</div>
+    </div>
+  );
+}
+
+/* Lo que vio el kernel, en vivo.
+ *
+ * El segmento 6 en la interfaz. Cada fila es un proceso que Tetragon mato
+ * ANTES de que llegara a ejecutarse: quien lo intentaba, que quiso correr, y
+ * que politica actuo.
+ *
+ * Esta en el lateral, junto a la GPU, porque igual que ella es contexto que
+ * tiene sentido tener a la vista todo el rato y no solo en su momento.
+ */
+function Kernel({ activo }: { activo: boolean }) {
+  const [datos, setDatos] = useState<any>(null);
+
+  useEffect(() => {
+    let vivo = true;
+    async function leer() {
+      try {
+        const r = await fetch("/api/eventos-kernel");
+        if (vivo) setDatos(await r.json());
+      } catch { /* el panel se queda como estaba */ }
+    }
+    leer();
+    const t = setInterval(leer, activo ? 2000 : 10000);
+    return () => { vivo = false; clearInterval(t); };
+  }, [activo]);
+
+  return (
+    <div className="panel" style={{ marginTop: 18 }}>
+      <div style={{ fontWeight: 600 }}>
+        Lo que vio el kernel
+        <Info>
+          Cada fila es un proceso que Tetragon mató <strong>antes</strong> de
+          que llegara a ejecutarse. No adivina intenciones: aplica una regla
+          sobre qué binarios puede lanzar el ejecutor de herramientas. Por eso
+          no falla cuando el análisis de contenido sí falla.
+        </Info>
+      </div>
+      {!datos?.hay && (
+        <p className="tenue" style={{ fontSize: 13, margin: "6px 0 0" }}>
+          {datos?.motivo ?? "consultando…"}
+        </p>
+      )}
+      {datos?.hay && datos.muertes.length === 0 && (
+        <p className="suave" style={{ fontSize: "var(--texto-chico)", margin: "6px 0 0" }}>
+          Nada bloqueado todavía.
+        </p>
+      )}
+      {datos?.muertes?.map((m: any, i: number) => (
+        <div key={i} style={{
+          marginTop: 8, padding: "8px 10px", borderRadius: 6,
+          background: "#2A0F12", border: "1px solid var(--bloqueo)",
+          fontFamily: "var(--fuente-mono)", fontSize: 12,
+        }}>
+          <div style={{ color: "var(--bloqueo)", fontWeight: 700 }}>SIGKILL</div>
+          <div className="suave">{m.ejecutaba}</div>
+          <div>quiso correr: <strong>{m.quiso_correr}</strong></div>
+          <div className="tenue">{m.politica}</div>
+        </div>
+      ))}
     </div>
   );
 }

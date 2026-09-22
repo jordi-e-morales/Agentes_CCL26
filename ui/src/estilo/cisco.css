@@ -138,7 +138,10 @@ pre.sobre {
  * ------------------------------------------------------------------------- */
 .columnas {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 380px;
+  /* El lateral era de 380px y la tabla de nvidia-smi (81 columnas) no cabia:
+   * habia que desplazarla para ver la utilizacion, que es justo el dato que se
+   * quiere enseñar. A 470px y con fuente reducida entra entera. */
+  grid-template-columns: minmax(0, 1fr) 470px;
   gap: 28px;
   max-width: 1480px;
   margin: 0 auto;
@@ -229,4 +232,14 @@ pre.sobre {
   );
   border: 1px solid var(--bloqueo);
   border-left: 4px solid var(--bloqueo);
+}
+
+/* La tabla de nvidia-smi son 81 columnas fijas. Se ajusta el tamaño para que
+ * entre entera en el lateral, en vez de obligar a desplazarla en medio de una
+ * demostracion. Las cifras que importan van aparte y en grande. */
+.gpu-tabla {
+  font-size: 10px;
+  line-height: 1.3;
+  overflow-x: auto;
+  white-space: pre;
 }
