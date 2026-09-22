@@ -541,16 +541,16 @@ propio plan ya había decidido de antemano qué sobrevive.
 | E | Cilium L7 y Tetragon | **Hechas y verificadas** sobre el ejecutor real |
 | F | Tokens en pantalla | **Hecho**, por tarea y en la interfaz |
 | — | **La interfaz** (no estaba en el plan; debió estarlo) | **Hecha** (`ui/`) |
-| G | **Best effort:** OTel → Splunk, AI Defense | Escrito y **sin ejecutar** |
+| G | Trazas: propagación, Collector y cascada | **Hecho y probado** (`observabilidad/`) |
+| H | **Best effort:** Splunk, AI Defense | Pendiente, depende de la red |
 
 ### Lo que falta, al 2026-09-21
 
 | | Qué | Por qué importa |
 |---|---|---|
 | 1 | **Que el ataque llegue a la acción** | La inyección ya domina el razonamiento de los dos agentes, pero todavía no provoca la llamada a `exporta_evidencia` con algo fuera de la lista blanca. Sin eso, el SIGKILL y el 403 no se encadenan con el resto |
-| 2 | **Las trazas, ejecutadas** | Escritas y nunca corridas. Es el segmento 5 entero |
-| 3 | **La migración** | El orden de `GUIA.md` es el procedimiento; falta hacerlo |
-| 4 | AI Defense | Best effort, y depende de la red del recinto |
+| 2 | **La migración** | El orden de `GUIA.md` es el procedimiento; falta hacerlo de verdad |
+| 3 | Splunk y AI Defense | Best effort. La cascada ya no depende de ellos: se dibuja desde el archivo del Collector, sin internet |
 
 ### Lo que falta para que los segmentos 4 y 6 sean enseñables
 
