@@ -291,6 +291,81 @@ async def trazas_recientes(_req):
         return JSONResponse({"hay": False, "motivo": f"{type(e).__name__}: {e}"})
 
 
+def solo_la_ruta(url: str | None) -> str | None:
+    """De la URL entera deja solo la ruta.
+
+    Hubble reporta la URL completa, que es larga y ruidosa en pantalla. Lo que
+    la sala tiene que ver es justo lo contrario de ruido: que /mcp se repite
+    IGUAL para herramientas distintas. Cortar al camino lo hace evidente.
+    """
+    if not url:
+        return None
+    sin_esquema = url.split("?")[0].split("//")[-1]
+    _, _, camino = sin_esquema.partition("/")
+    return "/" + camino if camino else "/"
+
+
+async def hubble(_req):
+    """Lo que la RED observo. La segunda fuente del CLAUDE.md §5.
+
+    POR QUE NO ES REDUNDANTE CON LA CASCADA
+    ----------------------------------------
+    La cascada es lo que la aplicacion DECLARA que hizo. Esto es lo que la red
+    VIO, sin preguntarle a nadie. Son fuentes independientes, y el valor esta en
+    el hueco entre ellas:
+
+      - Si un agente intenta una conexion fuera del pipeline, no va a emitir un
+        span confesandolo. Hubble la registra igual.
+      - Y al reves: la aplicacion dice "llame a dispone_caso"; la red vio
+        "POST /mcp", la MISMA linea que cuando consulto el historial.
+
+    Eso segundo es la lamina: la red autorizo la arista y no pudo ver la
+    intencion.
+    """
+    async def correr(*cmd):
+        proc = await asyncio.create_subprocess_exec(
+            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+        out, err = await asyncio.wait_for(proc.communicate(), timeout=12)
+        return out.decode(errors="replace"), err.decode(errors="replace")
+
+    try:
+        salida, err = await correr(
+            "hubble", "observe", "--namespace", "agentes",
+            "--last", "40", "--output", "json")
+        if not salida.strip():
+            motivo = "hubble no devolvio flujos"
+            if "connect" in err.lower() or "relay" in err.lower():
+                motivo = ("hubble no alcanza el relay. En otra terminal: "
+                          "cilium hubble port-forward &")
+            return JSONResponse({"hay": False, "motivo": motivo})
+
+        flujos = []
+        for linea in salida.splitlines():
+            try:
+                f = json.loads(linea)
+            except Exception:
+                continue
+            l7 = (f.get("l7") or {}).get("http") or {}
+            origen = f.get("source") or {}
+            destino = f.get("destination") or {}
+            flujos.append({
+                "hora": f.get("time"),
+                "de": origen.get("pod_name") or origen.get("identity"),
+                "a": destino.get("pod_name") or destino.get("identity"),
+                "veredicto": f.get("verdict"),
+                "metodo": l7.get("method"),
+                "ruta": solo_la_ruta(l7.get("url")),
+            })
+        # Solo los que llevan informacion de capa 7: son los que enseñan algo.
+        con_l7 = [f for f in flujos if f["metodo"]]
+        return JSONResponse({"hay": True, "flujos": (con_l7 or flujos)[-12:]})
+    except FileNotFoundError:
+        return JSONResponse({"hay": False,
+                             "motivo": "falta la CLI de hubble (./lab/bootstrap.sh)"})
+    except Exception as e:
+        return JSONResponse({"hay": False, "motivo": f"{type(e).__name__}: {e}"})
+
+
 async def salud(_req):
     return JSONResponse({"ok": True, "version_flujo": version_del_flujo()})
 
@@ -310,6 +385,7 @@ rutas = [
     Route("/api/salud", salud),
     Route("/api/gpu", gpu),
     Route("/api/eventos-kernel", eventos_kernel),
+    Route("/api/hubble", hubble),
     Route("/api/trazas", trazas_recientes),
     Route("/api/prompts", prompts),
     Route("/api/agentes", agentes),

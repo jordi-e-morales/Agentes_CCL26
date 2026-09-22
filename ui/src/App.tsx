@@ -138,6 +138,7 @@ export default function App() {
           <GPU activo={corriendo} />
           <Prompts />
           <Kernel activo={corriendo} corridaId={corridaId} />
+          <Red activo={corriendo} corridaId={corridaId} />
         </aside>
       </div>
     </>
@@ -773,4 +774,114 @@ function Fila({ ev }: { ev: Evento }) {
     default:
       return null;
   }
+}
+
+/* Lo que vio la RED. La segunda fuente obligatoria del CLAUDE.md §5.
+ *
+ * POR QUE ESTE PANEL NO SOBRA AL LADO DE LA CASCADA
+ * -------------------------------------------------
+ * La cascada la escribe la aplicacion: es lo que los agentes DECLARAN haber
+ * hecho. Esto lo escribe Hubble mirando los paquetes, sin preguntarle a nadie.
+ * Dos cosas que solo se pueden enseñar aqui:
+ *
+ *   1. Una AUSENCIA. Si un agente intenta una conexion fuera del pipeline, no
+ *      va a emitir un span confesandola. La red la registra igual.
+ *   2. Que POST /mcp se repite IDENTICO para herramientas distintas. La
+ *      aplicacion sabe que llamo a `dispone_caso`; la red vio la misma linea
+ *      que cuando consulto el historial.
+ *
+ * Lo segundo es la lamina del segmento 6: la arista estaba autorizada y la
+ * intencion no se veia. Se marca sola — regla 3 de la interfaz: no se ponen
+ * lineas lado a lado para que alguien busque el parecido, se cuenta cuantas
+ * son iguales y se dice.
+ */
+function Red({ activo, corridaId }: { activo: boolean; corridaId: number }) {
+  const [datos, setDatos] = useState<any>(null);
+
+  useEffect(() => {
+    let vivo = true;
+    async function leer() {
+      try {
+        const r = await fetch("/api/hubble");
+        const d = await r.json();
+        if (vivo) setDatos(d);
+      } catch { /* la red es contexto, no puede tumbar la demo */ }
+    }
+    leer();
+    const t = setInterval(leer, activo ? 3000 : 12000);
+    return () => { vivo = false; clearInterval(t); };
+  }, [activo, corridaId]);
+
+  const flujos: any[] = datos?.flujos ?? [];
+
+  // Cuantas veces aparece cada par metodo+ruta. Si un par sale mas de una vez,
+  // esas lineas son indistinguibles para la politica de red, y eso es
+  // justamente lo que hay que decir en voz alta.
+  const cuenta = new Map<string, number>();
+  for (const f of flujos) {
+    const k = `${f.metodo} ${f.ruta}`;
+    cuenta.set(k, (cuenta.get(k) ?? 0) + 1);
+  }
+
+  return (
+    <div className="panel" style={{ marginTop: 18 }}>
+      <div style={{ fontWeight: 600 }}>
+        Lo que vio la red
+        <Info>
+          Esto lo escribe Hubble mirando los paquetes, no la aplicación
+          contando lo que hizo. Por eso puede mostrar algo que la cascada
+          nunca mostrará: un intento que <strong>ningún span declara</strong>.
+          Y enseña el límite de la capa 7: varias herramientas distintas
+          viajan todas como el mismo <code>POST /mcp</code>.
+        </Info>
+      </div>
+
+      {!datos?.hay && (
+        <p className="tenue" style={{ fontSize: 13, margin: "6px 0 0" }}>
+          {datos?.motivo ?? "consultando…"}
+        </p>
+      )}
+
+      {datos?.hay && flujos.length === 0 && (
+        <p className="suave" style={{ fontSize: "var(--texto-chico)", margin: "6px 0 0" }}>
+          Sin tráfico de capa 7 todavía.
+        </p>
+      )}
+
+      {flujos.map((f, i) => {
+        const bloqueado = f.veredicto === "DROPPED" || f.veredicto === "DENIED";
+        const k = `${f.metodo} ${f.ruta}`;
+        const repetida = (cuenta.get(k) ?? 0) > 1;
+        return (
+          <div key={i} style={{
+            marginTop: 6, padding: "6px 9px", borderRadius: 6,
+            fontFamily: "var(--fuente-mono)", fontSize: 12,
+            background: bloqueado ? "#2A0F12" : "var(--fondo)",
+            border: `1px solid ${bloqueado ? "var(--bloqueo)" : "var(--borde)"}`,
+          }}>
+            <div style={{ display: "flex", gap: 6, alignItems: "baseline", flexWrap: "wrap" }}>
+              {bloqueado && (
+                <span style={{ color: "var(--bloqueo)", fontWeight: 700 }}>
+                  {f.veredicto}
+                </span>
+              )}
+              <strong>{f.metodo}</strong>
+              <span>{f.ruta}</span>
+              {/* La marca que hace el argumento: esta linea no es unica. */}
+              {repetida && !bloqueado && (
+                <span style={{
+                  fontSize: 11, padding: "1px 6px", borderRadius: 10,
+                  background: "var(--cisco-marino)", color: "var(--cisco-cian)",
+                  border: "1px solid var(--cisco-cian)",
+                }}>
+                  ×{cuenta.get(k)} idénticas
+                </span>
+              )}
+            </div>
+            <div className="tenue">{f.de} → {f.a}</div>
+          </div>
+        );
+      })}
+    </div>
+  );
 }

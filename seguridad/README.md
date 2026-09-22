@@ -92,6 +92,44 @@ bash seguridad/ver-eventos.sh --seguir
 El script resuelve las dos: busca el nodo donde vive el servidor de
 herramientas, le pregunta al Tetragon de *ese* nodo, y lee el histórico.
 
+## Ver lo que vio la red, y lo que la aplicación calló
+
+```bash
+cilium hubble port-forward &          # una vez, se queda corriendo
+bash seguridad/probar-hubble.sh
+```
+
+Esto no repite lo que hace `probar-l7.sh`. Ese comprueba que la política
+funciona; este enseña **por qué hacen falta dos fuentes de observabilidad** y no
+una.
+
+| Fuente | Qué es | Qué puede enseñar |
+|---|---|---|
+| La cascada de trazas | Lo que la aplicación **declara** haber hecho | Todo el detalle de lo que salió bien |
+| Hubble | Lo que la red **vio**, sin preguntar a nadie | Un intento que **ningún span menciona** |
+
+El script provoca que un pod con `rol: agente` intente ir directo a Postgres y
+después mira las dos fuentes: Hubble tiene el tráfico, el archivo del Collector
+tiene **cero** spans que mencionen el puerto 5432. No es un fallo de
+instrumentación — nadie instrumenta el camino que no existe.
+
+> Un panel de observabilidad alimentado solo por la aplicación no puede mostrar
+> una ausencia.
+
+El cliente es `agente-demo`, **sustituto** del agente real (que hoy corre en el
+host). La política mira la etiqueta del pod, así que para la red son lo mismo;
+pero la regla de honestidad del §6 pide etiquetar lo sustituido, y el script lo
+imprime en pantalla.
+
+En la interfaz esto mismo vive en el panel **Lo que vio la red**, al lado de
+*Lo que vio el kernel*. Ahí las líneas `POST /mcp` llevan una marca `×N
+idénticas`: es el límite de la capa 7 señalándose solo, sin obligar a nadie a
+comparar dos columnas.
+
+Y el grafo de agentes se dibuja con Hubble UI (`cilium hubble ui`, namespace
+`agentes`), que pinta lo que de verdad pasó — no un editor visual, que pinta lo
+que alguien diseñó.
+
 ## Lo que se ve cuando funciona (medido el 2026-09-20)
 
 Salida real de `probar-l7.sh`, recortada. **Estas tres líneas son el segmento 6

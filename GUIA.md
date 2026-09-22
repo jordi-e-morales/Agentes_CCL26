@@ -104,6 +104,37 @@ Compila la imagen, la mete al cluster con `kind load` y despliega.
 ./observabilidad/collector-up.sh
 ```
 
+### 7. Hubble, la segunda fuente
+
+Las trazas son lo que la aplicación **declara**. Hubble es lo que la red
+**vio**. El §5 pide las dos porque una ausencia solo se puede enseñar con la
+segunda: si un agente intenta una conexión fuera del pipeline, no va a emitir
+un span sobre ella.
+
+El relay necesita un port-forward, y se queda corriendo:
+
+```bash
+cilium hubble port-forward &
+```
+
+Con eso funcionan `hubble observe`, el panel *Lo que vio la red* de la interfaz
+y los dos scripts de seguridad. Comprobar:
+
+```bash
+hubble status
+```
+
+**El grafo de agentes se dibuja aquí, no en un editor visual** (§6): Hubble UI
+pinta lo que de verdad pasó.
+
+```bash
+cilium hubble ui
+```
+
+Abre el navegador solo; si no, queda en `http://localhost:12000`. Hay que
+elegir el namespace `agentes` en el desplegable de arriba: arranca vacío y sin
+eso parece roto.
+
 ---
 
 ## Las cuatro terminales
