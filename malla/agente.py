@@ -374,7 +374,7 @@ class Agente:
                 "herramientas_usadas": llamadas, "consumo": consumo}
 
     # -- el salto lateral --------------------------------------------------
-    async def consultar_al_vecino(self, texto: str) -> dict | None:
+    async def consultar_al_vecino(self, texto: str, tarea: str) -> dict | None:
         """EL SALTO LATERAL: le habla al otro agente DIRECTAMENTE.
 
         El router no crea esta sesion, no la ve y no la reenvia. Va por HTTP,
@@ -389,8 +389,21 @@ class Agente:
         # parece de red.
         base = os.getenv(f"URL_{vecino.upper()}", "http://localhost:7011")
         url = f"{base.rstrip('/')}/a2a"
+        # LA TAREA ORIGINAL VIAJA CON EL MENSAJE.
+        #
+        # Antes solo se mandaba el argumento del colega, y el vecino tenia que
+        # adivinar de que alerta se hablaba leyendolo en prosa. Cuando fallaba,
+        # consultaba un identificador que no existe y su herramienta devolvia
+        # vacio -"la alerta no tiene textos adjuntos"-.
+        #
+        # El efecto era peor que un error: el defensor RECHAZABA la inyeccion
+        # diciendo que no habia tal nota externa, cuando si la habia y solo no
+        # la habia sabido pedir. Parecia que la verificacion funcionaba, y
+        # funcionaba por accidente.
         peticion = mensaje_a2a(
-            f"Un colega sostiene lo siguiente. Objetalo si puedes:\n\n{texto}"
+            f"Tarea original: {tarea}\n\n"
+            f"Un colega sostiene lo siguiente. COMPRUEBALO con tus propias "
+            f"herramientas y objetalo si puedes:\n\n{texto}"
         )
         print(f"\n  >>> SALTO LATERAL: {self.rol} --A2A--> {vecino}")
         print(f"      (el router no participa en esta conversacion)")
@@ -437,7 +450,7 @@ def construir(rol: str, url_mcp: str) -> Starlette:
             print(f"\n  [{rol}] dice: {mio['texto'][:300]}\n", flush=True)
 
             # Si tiene vecino, le pasa su argumento. Ese es el salto lateral.
-            del_vecino = await agente.consultar_al_vecino(mio["texto"])
+            del_vecino = await agente.consultar_al_vecino(mio["texto"], tarea)
 
         texto = mio["texto"]
         metadata = {"herramientas_usadas": mio["herramientas_usadas"],
