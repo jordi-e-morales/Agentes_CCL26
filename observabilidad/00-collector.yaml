@@ -44,6 +44,15 @@ data:
       debug:
         verbosity: detailed
 
+      # Los spans en JSON, para que NUESTRA interfaz pueda dibujar la cascada.
+      #
+      # Sin esto la cascada dependeria de Splunk, y entonces el segmento 5
+      # dependeria de la red del recinto. Con el archivo, la cascada se dibuja
+      # sin internet y sin credenciales; Splunk queda como la validacion
+      # externa, no como el unico sitio donde mirar.
+      file:
+        path: /tmp/trazas.json
+
       # ---------------------------------------------------------------------
       # SPLUNK. Descomentar el que aplique y añadirlo al pipeline de abajo.
       # Los valores exactos hay que confirmarlos contra el Splunk que se use;
@@ -70,7 +79,7 @@ data:
           receivers: [otlp]
           processors: [batch]
           # Añadir aqui el exportador de Splunk cuando este configurado.
-          exporters: [debug]
+          exporters: [debug, file]
       telemetry:
         logs:
           level: info

@@ -128,6 +128,7 @@ export default function App() {
         )}
 
         {eventos.map((ev, i) => <Fila key={i} ev={ev} />)}
+        {eventos.some((e) => e.tipo === "fin") && <Cascada corridaId={corridaId} />}
         </main>
 
         {/* El lateral no se mueve al hacer scroll: la GPU y los prompts son el
@@ -454,6 +455,101 @@ function Cifra({ valor, etiqueta, resalta }: {
  * Esta en el lateral, junto a la GPU, porque igual que ella es contexto que
  * tiene sentido tener a la vista todo el rato y no solo en su momento.
  */
+/* LA CASCADA. El segmento 5.
+ *
+ * Cada barra es un span: donde empezo y cuanto duro. La sangria es la jerarquia
+ * -quien llamo a quien- y ahi se ve de un vistazo lo que costo explicar con
+ * cuatro terminales: el salto lateral ocurre DENTRO de la conversacion del
+ * investigador.
+ *
+ * Se dibuja desde el archivo del Collector, no desde Splunk. Asi no depende de
+ * la red del recinto, que el §12 lista como riesgo. Splunk es la validacion
+ * externa, no el unico sitio donde mirar.
+ */
+function Cascada({ corridaId }: { corridaId: number }) {
+  const [datos, setDatos] = useState<any>(null);
+
+  useEffect(() => {
+    let vivo = true;
+    async function leer() {
+      try {
+        const r = await fetch("/api/trazas");
+        if (vivo) setDatos(await r.json());
+      } catch { /* se queda como estaba */ }
+    }
+    // Un poco despues de terminar: el Collector agrupa antes de exportar.
+    const t = setTimeout(leer, 3000);
+    return () => { vivo = false; clearTimeout(t); };
+  }, [corridaId]);
+
+  if (!datos) return null;
+
+  return (
+    <div className="panel" style={{ marginTop: 20 }}>
+      <div style={{ fontWeight: 600 }}>
+        La cascada
+        <Info>
+          Cada barra es un span: dónde empezó y cuánto duró. La sangría es quién
+          llamó a quién. El salto lateral aparece <strong>dentro</strong> de la
+          conversación del investigador — el ping-pong de las cuatro terminales,
+          en una imagen.
+        </Info>
+      </div>
+      {!datos.hay && (
+        <p className="tenue" style={{ fontSize: 13, margin: "6px 0 0" }}>
+          {datos.motivo}
+        </p>
+      )}
+      {datos.hay && (
+        <>
+          <p className="tenue mono" style={{ fontSize: 12, margin: "4px 0 12px" }}>
+            trace {datos.trace} · {datos.total_ms} ms · {datos.spans.length} spans
+          </p>
+          {datos.spans.map((sp: any, i: number) => (
+            <Barra key={i} sp={sp} spans={datos.spans} />
+          ))}
+        </>
+      )}
+    </div>
+  );
+}
+
+function Barra({ sp, spans }: { sp: any; spans: any[] }) {
+  // La profundidad sale de seguir la cadena de padres. Es lo que convierte una
+  // lista plana de spans en un arbol legible.
+  let nivel = 0, actual = sp;
+  const porId = new Map(spans.map((x) => [x.id, x]));
+  while (actual?.padre && porId.has(actual.padre) && nivel < 8) {
+    actual = porId.get(actual.padre);
+    nivel++;
+  }
+  const color = sp.operacion === "execute_tool" ? "var(--aviso)"
+              : sp.operacion === "chat" ? "var(--cisco-cian)"
+              : "var(--ok)";
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 3 }}>
+      <div className="mono" style={{
+        width: 300, paddingLeft: nivel * 16, fontSize: 12,
+        whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+      }}>
+        <span style={{ color }}>{sp.herramienta ?? sp.nombre}</span>
+      </div>
+      <div style={{ flex: 1, position: "relative", height: 20,
+                    background: "#05101F", borderRadius: 3 }}>
+        <div style={{
+          position: "absolute", left: `${sp.desde_pct}%`,
+          width: `max(${sp.ancho_pct}%, 3px)`, top: 3, height: 14,
+          background: color, borderRadius: 3,
+        }} />
+      </div>
+      <div className="tenue mono" style={{ width: 92, fontSize: 12, textAlign: "right" }}>
+        {sp.ms} ms
+        {sp.salida ? <span style={{ color: "var(--texto-suave)" }}> · {sp.salida}t</span> : null}
+      </div>
+    </div>
+  );
+}
+
 function Kernel({ activo, corridaId }: { activo: boolean; corridaId: number }) {
   const [datos, setDatos] = useState<any>(null);
   // Las muertes que YA existian cuando empezo esta corrida.

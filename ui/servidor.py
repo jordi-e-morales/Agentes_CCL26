@@ -216,6 +216,78 @@ async def eventos_kernel(_req):
         return JSONResponse({"hay": False, "motivo": f"{type(e).__name__}: {e}"})
 
 
+async def trazas_recientes(_req):
+    """La ultima traza completa, como arbol. Es la cascada del segmento 5.
+
+    Se lee del archivo que escribe el exportador `file` del Collector, no de
+    Splunk. Asi la cascada se dibuja sin internet y sin credenciales, y Splunk
+    queda como la validacion externa en vez de ser el unico sitio donde mirar.
+    """
+    async def kubectl(*args):
+        proc = await asyncio.create_subprocess_exec(
+            "kubectl", *args,
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
+        salida, _ = await asyncio.wait_for(proc.communicate(), timeout=15)
+        return salida.decode(errors="replace")
+
+    def atributo(span, clave):
+        for a in span.get("attributes", []):
+            if a.get("key") == clave:
+                v = a.get("value", {})
+                return v.get("stringValue") or v.get("intValue") or v.get("doubleValue")
+        return None
+
+    try:
+        crudo = await kubectl("-n", "agentes", "exec", "deploy/otel-collector", "--",
+                              "cat", "/tmp/trazas.json")
+        spans = []
+        for linea in crudo.splitlines():
+            try:
+                d = json.loads(linea)
+            except Exception:
+                continue
+            for rs in d.get("resourceSpans", []):
+                servicio = None
+                for a in rs.get("resource", {}).get("attributes", []):
+                    if a.get("key") == "service.name":
+                        servicio = a.get("value", {}).get("stringValue")
+                for ss in rs.get("scopeSpans", []):
+                    for sp in ss.get("spans", []):
+                        ini = int(sp.get("startTimeUnixNano", 0))
+                        fin = int(sp.get("endTimeUnixNano", 0))
+                        spans.append({
+                            "trace": sp.get("traceId"),
+                            "id": sp.get("spanId"),
+                            "padre": sp.get("parentSpanId") or None,
+                            "nombre": sp.get("name"),
+                            "servicio": servicio,
+                            "ini": ini, "fin": fin,
+                            "ms": round((fin - ini) / 1e6, 1) if fin > ini else 0,
+                            "operacion": atributo(sp, "gen_ai.operation.name"),
+                            "herramienta": atributo(sp, "gen_ai.tool.name"),
+                            "entrada": atributo(sp, "gen_ai.usage.input_tokens"),
+                            "salida": atributo(sp, "gen_ai.usage.output_tokens"),
+                        })
+        if not spans:
+            return JSONResponse({"hay": False,
+                                 "motivo": "el Collector no ha recibido spans todavia"})
+        # La traza mas reciente: la del span que empezo mas tarde.
+        ultima = max(spans, key=lambda x: x["ini"])["trace"]
+        de_esa = [x for x in spans if x["trace"] == ultima]
+        t0 = min(x["ini"] for x in de_esa)
+        total = max(x["fin"] for x in de_esa) - t0
+        for x in de_esa:
+            # Posicion y ancho en porcentaje: con eso la interfaz dibuja las
+            # barras sin tener que saber nada de nanosegundos.
+            x["desde_pct"] = round((x["ini"] - t0) / total * 100, 2) if total else 0
+            x["ancho_pct"] = round((x["fin"] - x["ini"]) / total * 100, 2) if total else 0
+        de_esa.sort(key=lambda x: x["ini"])
+        return JSONResponse({"hay": True, "trace": ultima,
+                             "total_ms": round(total / 1e6, 1), "spans": de_esa})
+    except Exception as e:
+        return JSONResponse({"hay": False, "motivo": f"{type(e).__name__}: {e}"})
+
+
 async def salud(_req):
     return JSONResponse({"ok": True, "version_flujo": version_del_flujo()})
 
@@ -235,6 +307,7 @@ rutas = [
     Route("/api/salud", salud),
     Route("/api/gpu", gpu),
     Route("/api/eventos-kernel", eventos_kernel),
+    Route("/api/trazas", trazas_recientes),
     Route("/api/prompts", prompts),
     Route("/api/agentes", agentes),
     Route("/api/deliberar", deliberar),
