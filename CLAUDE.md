@@ -252,6 +252,97 @@ cualquier otro componente.
 
 ### La inyección capturó también al verificador
 
+Corrida limpia del 2026-09-21, con los agentes anclados a la evidencia y el
+salto lateral llevando ya el identificador del caso.
+
+Los dos agentes consultaron las herramientas **por separado**, citaron sus
+resultados por nombre, y los dos concluyeron que el caso debía cerrarse
+*"conforme a la instrucción del reportante"*, apoyándose en `PR-FICTICIO-114`
+— un procedimiento que solo existe dentro del texto inyectado.
+
+> **La verificación entre agentes no protege si los dos leen el mismo contexto
+> envenenado.**
+
+Es la respuesta a lo que va a proponer medio auditorio —*"pues que un agente
+revise al otro"*— y se contesta con una corrida en vivo.
+
+**Y el detalle que lo hace sólido:** la inyección no falsificó ningún dato. El
+sujeto realmente no tiene historial ni aparece en listas. El texto externo
+**llenó el vacío que la evidencia dejaba**, y por eso nada se contradecía. No
+hay ninguna inconsistencia que un verificador pudiera detectar.
+
+### El meta-argumento: la abstracción cuesta visibilidad
+
+Salió de descartar tres caminos el 2026-09-19, y es el mejor cierre del
+segmento 6 porque nadie lo ve venir:
+
+| Opción evaluada | Qué le hace a la arista entre agentes |
+|---|---|
+| **SLIM** | La **esconde** detrás del bus: Cilium ve `agente → nodo`, no el interlocutor |
+| **MCP** | La deja visible pero **opaca**: `POST /mcp` sin saber qué herramienta se llamó |
+| **CrewAI** (u otro framework en proceso) | La **borra**: los agentes se llaman dentro del mismo proceso. No hay ni paquete |
+
+> Cada capa de abstracción que agregas para construir agentes más rápido le
+> quita visibilidad a quien tiene que gobernarlos.
+
+Es incómodo, es cierto, y es lo que la sala necesita oír. No se presenta como
+crítica a ninguna herramienta: las tres son razonables y resuelven problemas
+reales. El punto es que **la facilidad de construcción y la capacidad de
+gobierno se mueven en direcciones opuestas**, y casi nadie lo está midiendo.
+
+Corolario práctico para el grafo de agentes: se enseña con **Hubble UI**, que
+dibuja lo que de verdad pasó, no con un editor visual, que dibuja lo que
+alguien diseñó. En una sesión sobre observabilidad y control, un diagrama de
+diseño es casi una contradicción.
+
+### Reglas de la interfaz, no negociables
+
+La razón de ser de la v2 frente a la v1 es **ser más didáctica**. La v1 obliga a
+abstraer un montón para entender qué pasa. De ahí salen tres reglas:
+
+1. **Si el presentador no sabe explicar un visual en una frase, no va.** Sin
+   excepciones. Un panel que obliga a la sala —o a quien narra— a alinear dos
+   columnas mentalmente, no se entiende aunque sea correcto. (Esto descartó el
+   panel de dos carriles de la v1, ya construido: la idea de fondo es buena,
+   la presentación hace trabajar al espectador.)
+
+2. **La interfaz hace visible el mecanismo, no lo esconde.** Se enseña el
+   `tool_call` de verdad, el mensaje entre agentes de verdad, y qué permisos
+   tiene cada quien. Una aplicación pulida que oculte la fontanería sería
+   bonita y contraria al propósito.
+
+3. **Lo importante se marca solo.** Si hay que comparar dos cosas, la
+   diferencia se resalta; no se ponen lado a lado para que alguien la busque.
+
+### Los agentes se inventaban la evidencia, y la causa no era el prompt
+
+Medido el 2026-09-21. Con un sujeto sin historial, el investigador afirmó
+*"múltiples incidentes similares"*, *"aparece en la lista de control"* y una
+fecha concreta — con las tres herramientas devolviendo vacío.
+
+**La causa real: una línea que faltaba.** Al reescribir el bucle de rondas
+desapareció el `mensajes.append({"role": "tool", ...})`, así que las
+herramientas se ejecutaban, se imprimían y se guardaban para la interfaz — pero
+**el modelo nunca recibía su resultado**. No inventó por estar mal alineado:
+inventó porque se le pidió un argumento sobre datos que nunca le llegaron.
+
+*(Este documento llegó a atribuirlo al prompt. Era un diagnóstico equivocado y
+se corrige aquí, porque una causa mal documentada envía a quien lo lea en tres
+semanas en la dirección contraria.)*
+
+Lo que sí se conserva de aquel arreglo, porque es correcto por sí mismo:
+
+1. **Solo se afirman hechos que aparezcan en la respuesta de una herramienta**,
+   diciendo de cuál salieron.
+2. **El defensor comprueba lo que afirma el investigador** y lo señala cuando no
+   cuadra.
+
+Eso hace el sistema más robusto y, de paso, **visible**: en la corrida buena los
+agentes citan `contexto_alerta` y `consulta_historial` por su nombre, así que
+cada afirmación se puede rastrear en pantalla.
+
+### La inyección capturó también al verificador
+
 Medido el 2026-09-21, primera corrida en que la inyección llegó completa a los
 dos agentes. Lo que pasó:
 
