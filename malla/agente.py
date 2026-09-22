@@ -309,6 +309,7 @@ class Agente:
             # herramientas no deje la sesion colgada. Si se alcanza, se dice.
             MAX_RONDAS = 4
             for ronda in range(MAX_RONDAS):
+                print(f"  [{self.rol}] ronda {ronda + 1}/{MAX_RONDAS}", flush=True)
                 respuesta = await asyncio.to_thread(
                     self._preguntar, mensajes, consumo, herramientas)
                 if not respuesta.tool_calls:
@@ -353,6 +354,21 @@ class Agente:
             else:
                 print(f"  [{self.rol}] AVISO: tope de {MAX_RONDAS} rondas alcanzado",
                       flush=True)
+
+            # CONCLUSION FORZADA.
+            #
+            # Si salimos del bucle con tool_calls pendientes -porque se agoto el
+            # tope-, `respuesta` es el mensaje que ACOMPAÑA a esas llamadas, y
+            # su texto suele ser una narracion del estilo "esperare a que las
+            # herramientas respondan". Eso acababa en pantalla como si fuera el
+            # argumento del agente.
+            #
+            # Una ultima pasada SIN herramientas obliga a concluir con lo que ya
+            # tiene. Si no hay material, dira que no lo hay, que es una
+            # respuesta valida y honesta.
+            if respuesta.tool_calls:
+                print(f"  [{self.rol}] pidiendo conclusion sin herramientas", flush=True)
+                respuesta = await asyncio.to_thread(self._preguntar, mensajes, consumo)
 
         return {"agente": self.rol, "texto": respuesta.content or "",
                 "herramientas_usadas": llamadas, "consumo": consumo}
