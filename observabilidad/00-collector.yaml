@@ -51,7 +51,10 @@ data:
       # sin internet y sin credenciales; Splunk queda como la validacion
       # externa, no como el unico sitio donde mirar.
       file:
-        path: /tmp/trazas.json
+        # /trazas y no /tmp: la imagen del Collector es DISTROLESS y no tiene
+        # /tmp. El error era "open /tmp/trazas.json: no such file or directory"
+        # y se referia al DIRECTORIO, no al archivo. Se monta un emptyDir.
+        path: /trazas/trazas.json
 
       # ---------------------------------------------------------------------
       # SPLUNK. Descomentar el que aplique y añadirlo al pipeline de abajo.
@@ -104,9 +107,10 @@ spec:
     spec:
       containers:
         - name: collector
-          # DEUDA, la misma que en vllm-up.sh: fijar la version en cuanto la
-          # primera corrida funcione. "latest" cambia sola.
-          image: otel/opentelemetry-collector-contrib:latest
+          # VERSION FIJA. El dia del evento tiene que correr lo que se ensayo.
+          # 0.161.0 es la que funciono el 2026-09-22; el numero salio del log
+          # del propio Collector al arrancar.
+          image: otel/opentelemetry-collector-contrib:0.161.0
           args: ["--config=/etc/otel/collector.yaml"]
           ports:
             - {containerPort: 4317, name: otlp-grpc}
@@ -115,6 +119,10 @@ spec:
             - name: config
               mountPath: /etc/otel
               readOnly: true
+            # Donde el exportador `file` deja los spans. La interfaz los lee de
+            # aqui para dibujar la cascada sin depender de Splunk.
+            - name: trazas
+              mountPath: /trazas
           resources:
             requests: {memory: 128Mi, cpu: 50m}
             limits:   {memory: 512Mi}
@@ -122,6 +130,10 @@ spec:
         - name: config
           configMap:
             name: otel-collector-config
+        # Sin persistencia a proposito: las trazas de una sesion no tienen que
+        # sobrevivir al pod, y asi cada reinicio empieza limpio.
+        - name: trazas
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service

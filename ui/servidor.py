@@ -239,7 +239,7 @@ async def trazas_recientes(_req):
 
     try:
         crudo = await kubectl("-n", "agentes", "exec", "deploy/otel-collector", "--",
-                              "cat", "/tmp/trazas.json")
+                              "cat", "/trazas/trazas.json")
         spans = []
         for linea in crudo.splitlines():
             try:
