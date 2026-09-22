@@ -111,6 +111,19 @@ Quien la recibe extrae el contexto y cuelga sus spans de ahí.
 medio habría que meter el contexto dentro del sobre y confiar en que el bus lo
 respetara — otro punto a favor de la decisión del `CLAUDE.md` §3.
 
+## La imagen del Collector es distroless
+
+Costó dos fallos seguidos y conviene tenerlo presente si se toca esta parte:
+
+| Síntoma | Causa |
+|---|---|
+| `open /tmp/trazas.json: no such file or directory` | **No existe `/tmp`.** El mensaje se refiere al directorio, no al archivo |
+| `kubectl exec ... -- cat` falla | **No hay `cat`**, ni shell, ni nada |
+
+Lo primero se resuelve montando un `emptyDir` en `/trazas`. Lo segundo, con un
+contenedor `lector` (busybox) que comparte el volumen y existe solo para poder
+leerlo. No se toca la imagen del Collector, que conviene dejar como viene.
+
 ## Lo que falta
 
 **Las trazas cubren el agente, no el servidor MCP.** Los spans `execute_tool`

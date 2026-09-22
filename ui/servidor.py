@@ -238,7 +238,10 @@ async def trazas_recientes(_req):
         return None
 
     try:
-        crudo = await kubectl("-n", "agentes", "exec", "deploy/otel-collector", "--",
+        # -c lector: el contenedor del Collector es distroless y no tiene cat.
+        # El lector comparte el volumen y existe solo para esto.
+        crudo = await kubectl("-n", "agentes", "exec", "deploy/otel-collector",
+                              "-c", "lector", "--",
                               "cat", "/trazas/trazas.json")
         spans = []
         for linea in crudo.splitlines():

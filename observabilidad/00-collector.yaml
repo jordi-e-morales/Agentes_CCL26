@@ -126,6 +126,27 @@ spec:
           resources:
             requests: {memory: 128Mi, cpu: 50m}
             limits:   {memory: 512Mi}
+        # ---------------------------------------------------------------
+        # UN LECTOR AL LADO.
+        #
+        # La imagen del Collector es DISTROLESS: no tiene shell, ni cat, ni
+        # nada. Por eso fallo primero el /tmp inexistente y despues cualquier
+        # intento de leer el archivo con `kubectl exec ... -- cat`.
+        #
+        # Este contenedor comparte el volumen y solo existe para que se pueda
+        # leer lo que el Collector escribe. Es la forma estandar de resolverlo
+        # y no toca la imagen del Collector, que conviene dejar como viene.
+        # ---------------------------------------------------------------
+        - name: lector
+          image: busybox:1.37
+          command: ["sh", "-c", "sleep infinity"]
+          volumeMounts:
+            - name: trazas
+              mountPath: /trazas
+              readOnly: true
+          resources:
+            requests: {memory: 16Mi, cpu: 10m}
+            limits:   {memory: 64Mi}
       volumes:
         - name: config
           configMap:
