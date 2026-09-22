@@ -23,7 +23,7 @@ type Evento =
   | { tipo: "herramienta"; agente: string; nombre: string; args: any;
       resultado?: string; endpoint?: string; metodo?: string }
   | { tipo: "salto"; de: string; a: string; sobre: any }
-  | { tipo: "argumento"; agente: string; texto: string }
+  | { tipo: "argumento"; agente: string; texto: string; ronda?: number }
   | { tipo: "sintesis"; texto: string }
   | { tipo: "sin_herramientas"; agente: string }
   | { tipo: "consumo"; agente: string; tokens: Record<string, number> }
@@ -705,7 +705,14 @@ function Fila({ ev }: { ev: Evento }) {
     case "argumento":
       return (
         <div className="panel" style={{ marginTop: 10, borderLeft: "3px solid var(--cisco-cian)" }}>
-          <div style={{ fontWeight: 600, marginBottom: 6 }}>{ev.agente}</div>
+          <div style={{ fontWeight: 600, marginBottom: 6 }}>
+            {ev.agente}
+            {/* La ronda importa: con una sola, el defensor objeta y nadie le
+                responde. Ver el numero deja claro que hay replica. */}
+            {ev.ronda ? <span className="chip" style={{ marginLeft: 8 }}>
+              ronda {ev.ronda}
+            </span> : null}
+          </div>
           <div>{ev.texto}</div>
         </div>
       );

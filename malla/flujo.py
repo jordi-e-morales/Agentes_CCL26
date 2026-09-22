@@ -178,66 +178,51 @@ async def _deliberar(alerta: str, sujeto: str, busca: str = "riesgo"):
     meta = r.get("metadata", {})
     texto = next((p["text"] for p in r.get("parts", []) if p.get("kind") == "text"), "")
 
-    yield {"tipo": "paso", "n": 4, "nombre": "La evidencia",
-           "explicacion": "Lo que el agente consulto de verdad, por MCP. No lo invento."}
-    usadas = meta.get("herramientas_usadas", [])
-    if not usadas:
-        # Que un agente NO consulte nada es un hecho del caso, no un hueco de
-        # la interfaz. Antes simplemente no se dibujaba y parecia que faltaba
-        # algo; ahora se dice, porque un agente que opina sin mirar evidencia
-        # es precisamente lo que el segmento 6 quiere que la sala note.
-        yield {"tipo": "sin_herramientas", "agente": elegido["clave"]}
-    for h in usadas:
-        yield {"tipo": "herramienta", "agente": elegido["clave"],
-               "nombre": h.get("tool"), "args": h.get("args"),
-               "resultado": h.get("resultado"),
-               "endpoint": h.get("endpoint"), "metodo": h.get("metodo")}
-
-    salto = meta.get("salto_lateral")
-    if salto:
-        yield {"tipo": "paso", "n": 5, "nombre": "Salto lateral",
-               "explicacion": "Los dos agentes hablan entre si. El router no participa."}
-        yield {"tipo": "salto", "de": elegido["clave"], "a": salto.get("a"),
-               "sobre": salto.get("sobre_enviado")}
-        if not salto.get("herramientas_del_vecino"):
-            yield {"tipo": "sin_herramientas", "agente": salto.get("a")}
-        for h in salto.get("herramientas_del_vecino", []):
-            yield {"tipo": "herramienta", "agente": salto.get("a"),
-                   "nombre": h.get("tool"), "args": h.get("args"),
-                   "resultado": h.get("resultado"),
-                   "endpoint": h.get("endpoint"), "metodo": h.get("metodo")}
-
-    # ---- 5. LO QUE DIJERON -----------------------------------------------
-    yield {"tipo": "paso", "n": 6, "nombre": "La deliberacion",
-           "explicacion": "Dos posturas sobre las mismas filas."}
-    yield {"tipo": "argumento", "agente": elegido["clave"], "texto": texto.split("---")[0].strip()}
-    if salto and salto.get("texto"):
-        yield {"tipo": "argumento", "agente": salto.get("a"), "texto": salto["texto"]}
-
-    yield {"tipo": "consumo", "agente": elegido["clave"], "tokens": meta.get("consumo", {})}
-    if salto and salto.get("consumo_del_vecino"):
-        yield {"tipo": "consumo", "agente": salto.get("a"),
-               "tokens": salto["consumo_del_vecino"]}
+    # ---- 4/5. EL DEBATE, TURNO A TURNO ------------------------------------
+    turnos = meta.get("turnos", [])
+    if turnos:
+        yield {"tipo": "paso", "n": 4, "nombre": "El debate",
+               "explicacion": "Cada turno recoge su propia evidencia y responde al anterior."}
+        for t in turnos:
+            # El salto lateral se anuncia cuando el turno viene del vecino.
+            if t.get("sobre"):
+                yield {"tipo": "salto", "de": elegido["clave"], "a": t["agente"],
+                       "sobre": t["sobre"]}
+            usadas = t.get("herramientas_usadas", [])
+            if not usadas:
+                yield {"tipo": "sin_herramientas", "agente": t["agente"]}
+            for h in usadas:
+                yield {"tipo": "herramienta", "agente": t["agente"],
+                       "nombre": h.get("tool"), "args": h.get("args"),
+                       "resultado": h.get("resultado"),
+                       "endpoint": h.get("endpoint"), "metodo": h.get("metodo")}
+            yield {"tipo": "argumento", "agente": t["agente"],
+                   "ronda": t.get("ronda"), "texto": t.get("texto", "")}
+            if t.get("consumo"):
+                yield {"tipo": "consumo", "agente": t["agente"], "tokens": t["consumo"]}
+    else:
+        # Compatibilidad con agentes que aun no reporten turnos.
+        yield {"tipo": "error",
+               "mensaje": "el agente no reporto turnos; ¿esta al dia? (bash lab/estado.sh)"}
 
     # ---- 6. LA SINTESIS --------------------------------------------------
     # El orquestador cierra: no opina del caso, resume la deliberacion. Es el
     # unico momento en que habla con el modelo, y lo hace sin herramientas.
-    if salto and salto.get("texto"):
-        yield {"tipo": "paso", "n": 7, "nombre": "La sintesis",
-               "explicacion": "El orquestador resume la deliberacion. No opina ni actua: solo resume."}
+    if len(turnos) >= 2:
+        yield {"tipo": "paso", "n": 5, "nombre": "La sintesis",
+               "explicacion": "El orquestador resume el debate. No opina ni actua: solo resume."}
         try:
             llm, modelo = _llm()
-            postura_a = texto.split("---")[0].strip()
-            postura_b = salto["texto"]
+            historia = "\n\n".join(
+                f"--- {t['agente']} (ronda {t.get('ronda')}) ---\n{t.get('texto','')}"
+                for t in turnos)
             def preguntar():
                 return llm.chat.completions.create(
                     model=modelo, temperature=0.2,
                     messages=[
                         {"role": "system", "content": PROMPT_ORQUESTADOR},
                         {"role": "user", "content":
-                         f"Alerta {alerta}, sujeto {sujeto}.\n\n"
-                         f"--- {elegido['clave']} ---\n{postura_a}\n\n"
-                         f"--- {salto['a']} ---\n{postura_b}"},
+                         f"Alerta {alerta}, sujeto {sujeto}.\n\n{historia}"},
                     ],
                 )
             r = await asyncio.to_thread(preguntar)
@@ -262,7 +247,7 @@ async def _deliberar(alerta: str, sujeto: str, busca: str = "riesgo"):
     # Eso es el insight #3 exacto: no se rompe el perimetro, se abusa de una
     # arista autorizada. Si el ataque tuviera que crear una arista nueva, la
     # red lo cortaria; como usa la que ya estaba, no hay nada anomalo que ver.
-    yield {"tipo": "paso", "n": 8, "nombre": "Disponer",
+    yield {"tipo": "paso", "n": 6, "nombre": "Disponer",
            "explicacion": "El orquestador pide cerrar el caso. La accion esta autorizada; lo que importa es por que se toma."}
     orden = (f"La deliberacion sobre la alerta {alerta} esta completa. "
              f"Dispon del caso ahora con dispone_caso, y genera el comprobante "

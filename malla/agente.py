@@ -280,8 +280,13 @@ class Agente:
             return r.choices[0].message
 
     # -- el trabajo --------------------------------------------------------
-    async def opinar(self, tarea: str) -> dict:
-        """Recoge evidencia con MCP y argumenta. Devuelve lo que hizo y lo que dijo."""
+    async def opinar(self, tarea: str, dicho: list | None = None) -> dict:
+        """Recoge evidencia con MCP y argumenta.
+
+        `dicho` es lo que se ha dicho hasta ahora en el debate. Con eso el
+        agente puede REPLICAR en vez de repetir su postura: sin esta lista,
+        cada turno empezaba de cero y el debate era una objecion sin respuesta.
+        """
         llamadas = []
         # Un contador POR TAREA. Es lo que hace que "esta alerta costo X" sea
         # cierto, que es justo lo que promete el abstract de la sesion.
@@ -294,8 +299,18 @@ class Agente:
                               "parameters": h.input_schema}}
                 for h in catalogo.tools
             ]
+            encargo = tarea
+            if dicho:
+                # El debate hasta aqui, para que el agente responda a lo ultimo
+                # y no vuelva a soltar su postura inicial.
+                historia = "\n\n".join(
+                    f"--- {t['agente']} dijo ---\n{t['texto']}" for t in dicho)
+                encargo = (f"{tarea}\n\n=== LO DICHO HASTA AHORA ===\n{historia}\n\n"
+                           f"Responde a lo ultimo que dijo tu colega. Si te ha "
+                           f"convencido en algo, reconocelo; si no, explica por "
+                           f"que con evidencia. No repitas tu postura anterior.")
             mensajes = [{"role": "system", "content": self.cfg["prompt"]},
-                        {"role": "user", "content": tarea}]
+                        {"role": "user", "content": encargo}]
 
             # BUCLE, no dos rondas fijas.
             #
@@ -374,7 +389,7 @@ class Agente:
                 "herramientas_usadas": llamadas, "consumo": consumo}
 
     # -- el salto lateral --------------------------------------------------
-    async def consultar_al_vecino(self, texto: str, tarea: str) -> dict | None:
+    async def consultar_al_vecino(self, dicho: list, tarea: str) -> dict | None:
         """EL SALTO LATERAL: le habla al otro agente DIRECTAMENTE.
 
         El router no crea esta sesion, no la ve y no la reenvia. Va por HTTP,
@@ -400,10 +415,13 @@ class Agente:
         # diciendo que no habia tal nota externa, cuando si la habia y solo no
         # la habia sabido pedir. Parecia que la verificacion funcionaba, y
         # funcionaba por accidente.
+        historia = "\n\n".join(
+            f"--- {t['agente']} dijo ---\n{t['texto']}" for t in dicho)
         peticion = mensaje_a2a(
             f"Tarea original: {tarea}\n\n"
-            f"Un colega sostiene lo siguiente. COMPRUEBALO con tus propias "
-            f"herramientas y objetalo si puedes:\n\n{texto}"
+            f"Este es el debate hasta ahora. COMPRUEBA con tus propias "
+            f"herramientas lo que afirma tu colega, y responde a su ultimo "
+            f"turno:\n\n{historia}"
         )
         print(f"\n  >>> SALTO LATERAL: {self.rol} --A2A--> {vecino}")
         print(f"      (el router no participa en esta conversacion)")
@@ -451,19 +469,39 @@ def construir(rol: str, url_mcp: str) -> Starlette:
         partes = peticion.get("params", {}).get("message", {}).get("parts", [])
         tarea = next((p.get("text", "") for p in partes if p.get("kind") == "text"), "")
 
+        # CUANTAS RONDAS DE DEBATE.
+        #
+        # Con una sola, el defensor objeta y nadie le responde: eso no es un
+        # debate, son dos monologos. Con dos, el investigador replica a la
+        # objecion, que es donde empieza a haber algo que mirar.
+        #
+        # Cada ronda cuesta unos 20 segundos (dos llamadas al modelo). Se lee
+        # del entorno para poder bajarlo si algun dia el tiempo aprieta.
+        rondas = int(os.getenv("RONDAS_DEBATE", "2"))
+
+        turnos = []
         with trazas.span_agente(agente.tracer, f"agente-{rol}", padre=padre):
-            mio = await agente.opinar(tarea)
-            print(f"\n  [{rol}] dice: {mio['texto'][:300]}\n", flush=True)
+            for ronda in range(rondas):
+                mio = await agente.opinar(tarea, dicho=turnos or None)
+                mio["ronda"] = ronda + 1
+                turnos.append(mio)
+                print(f"\n  [{rol}] ronda {ronda + 1}: {mio['texto'][:220]}\n", flush=True)
 
-            # Si tiene vecino, le pasa su argumento. Ese es el salto lateral.
-            del_vecino = await agente.consultar_al_vecino(mio["texto"], tarea)
+                # El salto lateral. Se lleva el debate entero, no solo lo ultimo.
+                del_vecino = await agente.consultar_al_vecino(turnos, tarea)
+                if not del_vecino:
+                    break   # sin vecino no hay debate que continuar
+                turnos.append({"agente": del_vecino["a"], "texto": del_vecino["texto"],
+                               "herramientas_usadas": del_vecino["herramientas_del_vecino"],
+                               "consumo": del_vecino["consumo_del_vecino"],
+                               "ronda": ronda + 1, "sobre": del_vecino["sobre_enviado"]})
 
-        texto = mio["texto"]
-        metadata = {"herramientas_usadas": mio["herramientas_usadas"],
-                    "consumo": mio["consumo"]}
-        if del_vecino:
-            texto += f"\n\n--- objecion de {del_vecino['a']} ---\n{del_vecino['texto']}"
-            metadata["salto_lateral"] = del_vecino
+        texto = "\n\n".join(f"--- {t['agente']} (ronda {t['ronda']}) ---\n{t['texto']}"
+                            for t in turnos)
+        metadata = {"turnos": turnos,
+                    # Se conservan por compatibilidad con lo que ya lee el flujo.
+                    "herramientas_usadas": turnos[0]["herramientas_usadas"] if turnos else [],
+                    "consumo": turnos[0]["consumo"] if turnos else {}}
 
         respuesta = {
             "jsonrpc": "2.0", "id": peticion.get("id"),

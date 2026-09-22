@@ -52,6 +52,28 @@ Descubrir y elegir no necesitan el modelo. Son diez segundos y no tocan la GPU:
 por capacidad. Si mañana aparece un agente nuevo, lo encuentra sin que nadie lo
 reprograme.
 
+## El debate tiene rondas
+
+Por omisión **dos**, configurable con `RONDAS_DEBATE`:
+
+```
+ronda 1   investigador argumenta  →  defensor objeta
+ronda 2   investigador replica    →  defensor responde
+```
+
+Con una sola ronda el defensor objetaba y **nadie le respondía**: eso no es un
+debate, son dos monólogos seguidos. En la ronda 2 cada agente recibe *lo dicho
+hasta ahora* y se le pide explícitamente que responda al último turno y no
+repita su postura.
+
+Cada ronda cuesta unos 20 segundos —dos llamadas al modelo— así que:
+
+```bash
+RONDAS_DEBATE=1 .venv/bin/python malla/agente.py --rol investigador
+```
+
+baja el tiempo a la mitad si algún día aprieta.
+
 ## Qué hace visible cada pieza
 
 | | Qué enseña |
