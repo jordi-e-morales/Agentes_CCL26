@@ -335,6 +335,21 @@ class Agente:
                                      "endpoint": self.url_mcp,
                                      "metodo": "tools/call",
                                      "ronda": ronda + 1})
+
+                    # ESTA LINEA ES LA QUE DEVUELVE LA EVIDENCIA AL MODELO.
+                    #
+                    # Se cayo al reescribir el bucle, y el efecto fue peor que
+                    # un error: el modelo pedia herramientas, nunca recibia
+                    # nada, y RELLENABA EL HUECO. Llego a afirmar "multiples
+                    # incidentes" y "aparece en la lista de control" con las
+                    # tres herramientas devolviendo vacio.
+                    #
+                    # Desde fuera parecia un problema de alineacion del modelo.
+                    # No lo era: nunca vio los datos. Sin este append, todo lo
+                    # demas -las trazas, la interfaz, los tokens- sigue
+                    # funcionando y mintiendo.
+                    mensajes.append({"role": "tool", "tool_call_id": t.id,
+                                     "content": txt})
             else:
                 print(f"  [{self.rol}] AVISO: tope de {MAX_RONDAS} rondas alcanzado",
                       flush=True)
