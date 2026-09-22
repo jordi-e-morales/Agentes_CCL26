@@ -29,6 +29,7 @@ Uso:
 
 import argparse
 import asyncio
+import hashlib
 import json
 import pathlib
 import sys
@@ -127,8 +128,21 @@ async def prompts(_req):
     ])
 
 
+def version_del_flujo() -> str:
+    """Huella de malla/flujo.py, que este proceso importo AL ARRANCAR.
+
+    Existe por el mismo motivo que la de los agentes: Python no recarga modulos
+    solos. Se cambia el flujo, se olvida reiniciar esta terminal, y el sintoma
+    es que unos pasos "no salen" -indistinguible de que el flujo se rompiera-.
+    Ya costo varios intentos.
+    """
+    return hashlib.sha256(
+        (RAIZ / "malla" / "flujo.py").read_bytes()
+    ).hexdigest()[:12]
+
+
 async def salud(_req):
-    return JSONResponse({"ok": True})
+    return JSONResponse({"ok": True, "version_flujo": version_del_flujo()})
 
 
 async def indice(_req):
@@ -166,7 +180,7 @@ if __name__ == "__main__":
     p.add_argument("--puerto", type=int, default=8080)
     a = p.parse_args()
     import uvicorn
-    print(f"Interfaz en http://localhost:{a.puerto}")
+    print(f"Interfaz en http://localhost:{a.puerto}  (flujo {version_del_flujo()})")
     if not (DIST / "index.html").exists():
         print("  (la pagina aun no esta compilada: cd ui && npm install && npm run build)")
     uvicorn.run(app, host="0.0.0.0", port=a.puerto, log_level="warning")

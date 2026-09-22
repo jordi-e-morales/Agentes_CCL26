@@ -153,7 +153,7 @@ Sin esa variable los agentes corren igual y no exportan nada.
 | Cambió | Qué hacer |
 |---|---|
 | `malla/agente.py` | Reiniciar las dos terminales de agentes |
-| `malla/flujo.py`, `ui/servidor.py` | Reiniciar la terminal de la interfaz |
+| `malla/flujo.py`, `ui/servidor.py` | **Reiniciar la terminal de la interfaz.** Importa el flujo al arrancar; sin reiniciar, los pasos nuevos no salen y no da ningún error |
 | `ui/src/**` | `cd ui && npm run build`, y recargar el navegador |
 | `ui/package.json` | `npm install` antes del build |
 | `herramientas/servidor_mcp.py` | `./herramientas/servidor-up.sh` |

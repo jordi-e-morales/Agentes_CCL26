@@ -107,7 +107,22 @@ agente_al_dia() {  # puerto  descripcion  como_levantarlo
 }
 agente_al_dia 7010 "agente investigador (:7010)" ".venv/bin/python malla/agente.py --rol investigador"
 agente_al_dia 7011 "agente defensor (:7011)"     ".venv/bin/python malla/agente.py --rol defensor --puerto 7011"
-puerto 8080 "la interfaz (:8080)"          ".venv/bin/python ui/servidor.py"
+# La interfaz importa malla/flujo.py AL ARRANCAR, asi que tiene el mismo
+# problema que los agentes: cambias el flujo, olvidas reiniciar, y unos pasos
+# dejan de salir sin que nada parezca roto.
+if (echo >/dev/tcp/127.0.0.1/8080) >/dev/null 2>&1; then
+  d=$(python3 -c "import hashlib,pathlib;print(hashlib.sha256(pathlib.Path('malla/flujo.py').read_bytes()).hexdigest()[:12])" 2>/dev/null)
+  m=$(curl -s http://127.0.0.1:8080/api/salud 2>/dev/null | jq -r '.version_flujo // empty' 2>/dev/null)
+  if [ -z "$m" ]; then
+    falta "la interfaz corre CODIGO VIEJO (sin version_flujo)" "reinicia: .venv/bin/python ui/servidor.py"
+  elif [ "$m" != "$d" ]; then
+    falta "la interfaz corre FLUJO VIEJO ($m != $d)" "reinicia: .venv/bin/python ui/servidor.py"
+  else
+    ok "la interfaz (:8080)"
+  fi
+else
+  falta "la interfaz (:8080)" ".venv/bin/python ui/servidor.py"
+fi
 
 # Opcional: solo hace falta si se quieren trazas.
 if (echo >/dev/tcp/127.0.0.1/4318) >/dev/null 2>&1; then
