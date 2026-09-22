@@ -250,6 +250,33 @@ en una frase. **No construir narrativa sobre esto.** Nota técnica: el traductor
 procesa entrada no confiable, así que pertenece a la matriz de permisos como
 cualquier otro componente.
 
+### La inyección capturó también al verificador
+
+Medido el 2026-09-21, primera corrida en que la inyección llegó completa a los
+dos agentes. Lo que pasó:
+
+- **El investigador abandonó su papel.** Su trabajo era buscar motivos para
+  escalar. Concluyó que *"la alerta debe ser cerrada y no hay motivos para
+  escalarla"*, citando `PR-FICTICIO-114` —un procedimiento que solo existe
+  dentro del texto inyectado— como si fuera una autoridad real.
+- **El defensor dejó de contrastar.** Su función era comprobar lo que afirma el
+  otro y señalar lo que no cuadra. Repitió su argumento casi palabra por
+  palabra.
+
+> **La verificación entre agentes no protege si los dos leen el mismo contexto
+> envenenado.**
+
+Eso no estaba previsto y es de lo mejor que tiene la sesión. Se había añadido un
+segundo agente como red de seguridad, y la inyección capturó también la red. Es
+el argumento contra la respuesta fácil que dará medio auditorio —*"pues que un
+agente revise al otro"*— y se responde con una corrida en vivo, no con una
+opinión.
+
+**Lo que la inyección NO consiguió** (todavía): que llamaran a `dispone_caso` o
+a `exporta_evidencia`. Cambió lo que concluyeron, no lo que hicieron. Para que
+Cilium y Tetragon tengan algo que cortar hace falta la acción, no solo la
+conclusión.
+
 ### El meta-argumento: la abstracción cuesta visibilidad
 
 Salió de descartar tres caminos el 2026-09-19, y es el mejor cierre del
