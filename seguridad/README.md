@@ -33,6 +33,26 @@ esté bien escrita.
 bash seguridad/probar-lista-blanca.sh
 ```
 
+### La lista blanca bloqueó a su propio equipo
+
+Pasó el 2026-09-21 y merece contarse en la sesión.
+
+`exporta_evidencia` escribía una sola línea con `printf`, que es **interno de
+dash**: no hay `exec`, no hay nada que matar. Cuando el comprobante pasó a ser
+un expediente completo, la escritura cambió a `cat > ruta` — y `cat` **sí** es
+un binario.
+
+Tetragon lo mató. El archivo quedó **vacío**, porque la redirección `>` crea el
+fichero antes del `exec`.
+
+Nadie había tocado la política. Un cambio legítimo en la herramienta chocó con
+la lista blanca, exactamente como debe ser. **Eso demuestra que está viva y no
+es decorativa**, que es justo lo que alguien en la sala va a sospechar cuando
+vea el SIGKILL del ataque.
+
+El arreglo es añadir `cat`, no ensanchar la regla: la lista dice exactamente
+qué necesita el generador de comprobantes.
+
 ### Las dos formas de fallar en silencio
 
 Esta política puede romperse sin avisar, en dos direcciones opuestas:

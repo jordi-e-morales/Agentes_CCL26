@@ -75,12 +75,27 @@ spec:
             - index: 0
               operator: "NotEqual"
               values:
-                # LA LISTA BLANCA. Lo unico que el generador de comprobantes
-                # necesita ejecutar es el shell; `printf` es interno de dash y
-                # no genera un exec propio.
+                # LA LISTA BLANCA: exactamente lo que el generador de
+                # comprobantes necesita ejecutar, y nada mas.
+                #
+                # El shell, porque python lo lanza para escribir el archivo:
                 - "/bin/sh"
                 - "/usr/bin/sh"
                 - "/bin/dash"
                 - "/usr/bin/dash"
+                # Y `cat`, porque el comprobante se escribe con "cat > ruta".
+                #
+                # ESTE AÑADIDO SALIO DE UN BLOQUEO REAL. Cuando el comprobante
+                # paso de una linea a un expediente completo, la escritura
+                # cambio de `printf` -interno de dash, sin exec- a `cat`, que
+                # es un binario. La politica lo mato, y el archivo quedo VACIO
+                # porque la redireccion ">" crea el fichero antes del exec.
+                #
+                # Merece contarse en la sesion: la lista blanca bloqueo a su
+                # propio equipo por hacer un cambio legitimo. Eso demuestra que
+                # esta viva y que no es decorativa, que es justo lo que alguien
+                # en la sala va a sospechar.
+                - "/bin/cat"
+                - "/usr/bin/cat"
           matchActions:
             - action: Sigkill
