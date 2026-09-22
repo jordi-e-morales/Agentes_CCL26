@@ -655,7 +655,20 @@ una decisión: si alguien le da Ctrl+C, se relanza con flecha arriba y Enter.
 - **Internet el día del evento.** Splunk y AI Defense lo requieren. Mitigación:
   video de respaldo **por segmento**, no uno solo, y medir la red desde el piso
   el día de armado.
-- **Seis encendidos en vivo.** Regla de abandono definida de antemano: si algo
-  no responde en 60 segundos, se pasa al video sin disculparse.
+- **Seis encendidos en vivo.** Regla de abandono, **redefinida el 2026-09-22**:
+  no es sobre la duración total, es sobre el **silencio**. Si pasan 60 segundos
+  sin que aparezca nada nuevo en pantalla, se pasa al vídeo sin disculparse.
+
+  La regla original —60 segundos de duración total— se escribió cuando la demo
+  era terminal, y ahí 41 segundos mirando un cursor son insoportables. Con la
+  interfaz transmitiendo en vivo, la sala ve aparecer el descubrimiento, la
+  elección, el sobre A2A, cada herramienta con su respuesta y el salto lateral.
+  **La espera es la demo**, no una pausa dentro de ella.
+
+  Medido el 2026-09-22: una deliberación completa con disposición tarda **~41
+  segundos** y 47 spans. El coste está en las ocho llamadas al modelo (3 a 7 s
+  cada una); las herramientas no pintan nada (20 a 96 ms). Si alguna vez hace
+  falta acortar, las palancas son `CTX=16384`, prompts más cortos, y que el
+  paso 8 no vuelva a saltar al vecino. Hoy no hace falta.
 - **El driver de la instancia final.** Preguntarlo al pedirla. Si trae ≥ 580 se
   destraba el NIM con razonamiento; si trae 555, ya está todo resuelto.
