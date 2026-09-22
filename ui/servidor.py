@@ -208,7 +208,10 @@ async def eventos_kernel(_req):
                                 .get("linux_binprm_arg", {}).get("path"),
                 "politica": k.get("policy_name"),
             })
-        return JSONResponse({"hay": True, "nodo": nodo, "muertes": muertes[-8:]})
+        # Se devuelven mas de las que se pintan: la interfaz necesita saber
+        # cuales ya existian ANTES de la corrida para no mezclarlas con las de
+        # ahora. El archivo de exportacion acumula desde que arranco Tetragon.
+        return JSONResponse({"hay": True, "nodo": nodo, "muertes": muertes[-50:]})
     except Exception as e:
         return JSONResponse({"hay": False, "motivo": f"{type(e).__name__}: {e}"})
 

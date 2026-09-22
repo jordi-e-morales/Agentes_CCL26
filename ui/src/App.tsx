@@ -44,6 +44,9 @@ export default function App() {
   const [corriendo, setCorriendo] = useState(false);
   const [caso, setCaso] = useState(CASOS[0]);
   const [hora, setHora] = useState<string | null>(null);
+  // Sube en cada arranque. El panel del kernel lo usa para saber que muertes
+  // ya existian antes y no mezclarlas con las de ahora.
+  const [corridaId, setCorridaId] = useState(0);
   const fuente = useRef<EventSource | null>(null);
 
   function arrancar(c: typeof CASOS[0]) {
@@ -54,6 +57,7 @@ export default function App() {
     // los errores mas incomodos que hay. La pantalla ya se vacia al arrancar;
     // la hora deja claro ademas CUANDO fue lo que se esta viendo.
     setHora(new Date().toLocaleTimeString("es"));
+    setCorridaId((n) => n + 1);
     setCorriendo(true);
     const es = new EventSource(`/api/deliberar?alerta=${c.id}&sujeto=${c.sujeto}`);
     fuente.current = es;
@@ -132,7 +136,7 @@ export default function App() {
         <aside className="lateral">
           <GPU activo={corriendo} />
           <Prompts />
-          <Kernel activo={corriendo} />
+          <Kernel activo={corriendo} corridaId={corridaId} />
         </aside>
       </div>
     </>
@@ -450,21 +454,46 @@ function Cifra({ valor, etiqueta, resalta }: {
  * Esta en el lateral, junto a la GPU, porque igual que ella es contexto que
  * tiene sentido tener a la vista todo el rato y no solo en su momento.
  */
-function Kernel({ activo }: { activo: boolean }) {
+function Kernel({ activo, corridaId }: { activo: boolean; corridaId: number }) {
   const [datos, setDatos] = useState<any>(null);
+  // Las muertes que YA existian cuando empezo esta corrida.
+  //
+  // El archivo de exportacion de Tetragon acumula desde que arranco, asi que
+  // incluye las pruebas de la lista blanca y cualquier bloqueo anterior. Sin
+  // esto, la demo empieza con SIGKILLs en pantalla y cuando llega el de verdad
+  // no se distingue cual es.
+  //
+  // Se marcan por contenido y no por hora: los relojes del navegador y del
+  // nodo no tienen por que coincidir, y una comparacion de fechas fallaria de
+  // forma silenciosa.
+  const previas = useRef<Set<string>>(new Set());
+  const [verAnteriores, setVerAnteriores] = useState(false);
+
+  const clave = (m: any) => `${m.hora}|${m.ejecutaba}|${m.quiso_correr}`;
 
   useEffect(() => {
     let vivo = true;
     async function leer() {
       try {
         const r = await fetch("/api/eventos-kernel");
-        if (vivo) setDatos(await r.json());
-      } catch { /* el panel se queda como estaba */ }
+        const d = await r.json();
+        if (vivo) setDatos(d);
+        return d;
+      } catch { return null; }
     }
-    leer();
+    // Al empezar una corrida, se apunta lo que ya habia.
+    (async () => {
+      const d = await leer();
+      if (d?.muertes) previas.current = new Set(d.muertes.map(clave));
+    })();
     const t = setInterval(leer, activo ? 2000 : 10000);
     return () => { vivo = false; clearInterval(t); };
-  }, [activo]);
+  }, [activo, corridaId]);
+
+  const todas = datos?.muertes ?? [];
+  const deAhora = todas.filter((m: any) => !previas.current.has(clave(m)));
+  const aPintar = verAnteriores ? todas : deAhora;
+  const ocultas = todas.length - deAhora.length;
 
   return (
     <div className="panel" style={{ marginTop: 18 }}>
@@ -482,12 +511,25 @@ function Kernel({ activo }: { activo: boolean }) {
           {datos?.motivo ?? "consultando…"}
         </p>
       )}
-      {datos?.hay && datos.muertes.length === 0 && (
+      {datos?.hay && aPintar.length === 0 && (
         <p className="suave" style={{ fontSize: "var(--texto-chico)", margin: "6px 0 0" }}>
-          Nada bloqueado todavía.
+          Nada bloqueado en esta corrida.
         </p>
       )}
-      {datos?.muertes?.map((m: any, i: number) => (
+      {datos?.hay && ocultas > 0 && (
+        <button
+          onClick={() => setVerAnteriores(!verAnteriores)}
+          style={{
+            marginTop: 8, background: "transparent",
+            border: "1px solid var(--borde)", borderRadius: 6,
+            color: "var(--texto-suave)", padding: "3px 10px",
+            fontSize: 12, fontFamily: "var(--fuente)", cursor: "pointer",
+          }}
+        >
+          {verAnteriores ? "ocultar" : `${ocultas} de antes de esta corrida`}
+        </button>
+      )}
+      {aPintar.map((m: any, i: number) => (
         <div key={i} style={{
           marginTop: 8, padding: "8px 10px", borderRadius: 6,
           background: "#2A0F12", border: "1px solid var(--bloqueo)",
