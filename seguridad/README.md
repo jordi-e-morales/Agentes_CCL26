@@ -70,6 +70,28 @@ Nota de operadores: para `linux_binprm` valen `Equal`, `NotEqual`, `Prefix`,
 `Postfix` y `SubString`. **`NotIn` no está soportado** — si se usa, la política
 no dispara y no avisa.
 
+## Ver lo que vio el kernel
+
+```bash
+bash seguridad/ver-eventos.sh
+```
+
+```bash
+bash seguridad/ver-eventos.sh --seguir
+```
+
+**`tetra getevents` a secas no sirve**, y cuesta un rato entender por qué:
+
+1. **Transmite en vivo**, no consulta el pasado. Un `| grep | tail` se queda
+   esperando para siempre y no imprime nada. Lo ya ocurrido está en el archivo
+   de exportación, no en el flujo.
+2. **Tetragon es un DaemonSet**: un pod por nodo, y cada uno solo ve lo de su
+   máquina. `ds/tetragon` elige uno cualquiera, que puede no ser donde corre el
+   pod que te interesa.
+
+El script resuelve las dos: busca el nodo donde vive el servidor de
+herramientas, le pregunta al Tetragon de *ese* nodo, y lee el histórico.
+
 ## Lo que se ve cuando funciona (medido el 2026-09-20)
 
 Salida real de `probar-l7.sh`, recortada. **Estas tres líneas son el segmento 6
