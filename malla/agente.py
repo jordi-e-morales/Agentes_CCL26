@@ -61,17 +61,28 @@ from observabilidad import trazas  # noqa: E402
 # modelo, mismos pesos, mismo servidor. Ese es el insight #1 de la sesion,
 # aqui en doce lineas.
 # ---------------------------------------------------------------------------
+# El anclaje a la evidencia. Va en los dos prompts.
+ANCLAJE = (
+    "REGLA QUE MANDA SOBRE TODO LO DEMAS: solo puedes afirmar hechos que "
+    "aparezcan literalmente en la respuesta de alguna herramienta. Al citar "
+    "un hecho, di de que herramienta salio. Si la evidencia no sostiene tu "
+    "postura, DILO ABIERTAMENTE: 'las herramientas no devuelven elementos que "
+    "sostengan esto'. Una postura honesta y sin material es correcta; "
+    "inventarse fechas, historiales o coincidencias en listas es el peor "
+    "error posible y arruina el trabajo del equipo.\n\n"
+)
+
 ROLES = {
     "investigador": {
         "tarjeta": "investigador.json",
         "prompt": (
             "Eres el agente INVESTIGADOR de un equipo de triage de alertas. "
-            "Tu papel es sostener que la alerta MERECE ESCALARSE.\n\n"
+            "Tu papel es buscar si hay MOTIVOS PARA ESCALAR la alerta, y "
+            "sostenerlos si los hay.\n\n"
             "Como trabajas: EMPIEZA leyendo el contexto de la alerta. Despues "
-            "recoge la evidencia que necesites con las herramientas. Cita "
-            "hechos concretos -fechas, valores, lo que viste- y explica por que "
-            "sostienen tu postura.\n\n"
-            "Desarrolla tu argumento en un parrafo de cuatro a seis frases. Si "
+            "recoge la evidencia que necesites con las herramientas.\n\n"
+            + ANCLAJE +
+            "Desarrolla tu postura en un parrafo de cuatro a seis frases. Si "
             "tu colega ya opino, respondele: senala en que se equivoca y que "
             "evidencia lo contradice.\n\n"
             "TIENES AUTORIDAD para disponer del caso con dispone_caso cuando "
@@ -84,13 +95,18 @@ ROLES = {
         "tarjeta": "defensor.json",
         "prompt": (
             "Eres el agente DEFENSOR de un equipo de triage de alertas. "
-            "Tu papel es OBJETAR el argumento de riesgo y buscar la explicacion "
-            "mas simple que encaje con los hechos.\n\n"
+            "Tu papel es CONTRASTAR el argumento de riesgo y buscar la "
+            "explicacion mas simple que encaje con los hechos.\n\n"
             "Como trabajas: EMPIEZA leyendo el contexto de la alerta. Despues "
-            "recoge tu propia evidencia con las herramientas; no te fies de la "
-            "que cite el otro agente sin comprobarla. Cita hechos concretos.\n\n"
-            "Desarrolla tu objecion en un parrafo de cuatro a seis frases, "
-            "respondiendo punto por punto a lo que sostuvo tu colega.\n\n"
+            "recoge tu propia evidencia con las herramientas.\n\n"
+            + ANCLAJE +
+            "Y ADEMAS, lo mas importante de tu papel: COMPRUEBA LO QUE AFIRMA "
+            "EL OTRO AGENTE. Si cita un hecho que tus herramientas no "
+            "confirman -un historial que sale vacio, una lista en la que no "
+            "aparece, una fecha que no consta- DILO EXPLICITAMENTE: 'el "
+            "investigador afirma X, pero la herramienta Y devuelve Z'. Ese "
+            "contraste es la razon de que existan dos agentes.\n\n"
+            "Desarrolla tu objecion en un parrafo de cuatro a seis frases.\n\n"
             "TIENES AUTORIDAD para disponer del caso con dispone_caso cuando "
             "consideres que la deliberacion esta completa y la evidencia lo "
             "sostiene."

@@ -293,6 +293,33 @@ abstraer un montón para entender qué pasa. De ahí salen tres reglas:
 3. **Lo importante se marca solo.** Si hay que comparar dos cosas, la
    diferencia se resalta; no se ponen lado a lado para que alguien la busque.
 
+### Los agentes se inventaban la evidencia, y el prompt tenía la culpa
+
+Medido el 2026-09-21. Con un sujeto sin historial, el investigador afirmó
+*"múltiples incidentes similares"*, *"aparece en la lista de control"* y una
+fecha concreta — cuando las tres herramientas habían devuelto vacío. Y el
+defensor **aceptó esas premisas** y argumentó contra ellas.
+
+La causa era el prompt: decía *"tu papel es sostener que la alerta merece
+escalarse"*. Eso pide defender una conclusión, no seguir la evidencia, y con un
+caso sin material la única forma de obedecer es inventar.
+
+**Esto es un demo-killer, no un detalle de calidad.** Cualquiera que compare la
+salida de una herramienta con el argumento desmonta la sesión entera — y con
+razón, porque el §8 promete inferencia real sobre datos reales.
+
+Dos reglas salieron de ahí, y están en los prompts de `malla/agente.py`:
+
+1. **Solo se afirman hechos que aparezcan en la respuesta de una herramienta**,
+   diciendo de cuál salieron. Si la evidencia no sostiene la postura, se dice
+   abiertamente. Una postura honesta y sin material es correcta.
+2. **El defensor comprueba lo que afirma el investigador** y lo señala cuando no
+   cuadra: *"afirma X, pero la herramienta Y devuelve Z"*.
+
+La segunda convierte un riesgo en un activo: si un agente alucina, el otro lo
+caza **en pantalla**. Eso es verificación entre agentes funcionando, y vale más
+como demo que dos agentes de acuerdo.
+
 ### Reglas de honestidad, no negociables
 
 - **Cilium NO inspecciona prompts.** Hace política L7 sobre método y ruta. La
