@@ -26,6 +26,9 @@ import pathlib
 import urllib.request
 
 RAIZ = pathlib.Path(__file__).resolve().parent.parent
+import sys
+sys.path.insert(0, str(RAIZ))
+from observabilidad import trazas  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # El orquestador NO tiene herramientas, y eso es a proposito.
@@ -73,9 +76,15 @@ AGENTES = {
 
 def _pedir(url: str, cuerpo: dict | None = None, espera: int = 300) -> dict:
     datos = json.dumps(cuerpo).encode() if cuerpo else None
+    # El contexto de traza viaja con la peticion. Asi los spans del agente
+    # cuelgan de la traza del orquestador en vez de empezar una suya.
+    #
+    # Funciona a traves de asyncio.to_thread porque esa funcion copia el
+    # contexto del llamante al hilo.
+    cabeceras = trazas.inyectar({"Content-Type": "application/json"} if cuerpo else {})
     req = urllib.request.Request(
         url, data=datos, method="POST" if cuerpo else "GET",
-        headers={"Content-Type": "application/json"} if cuerpo else {},
+        headers=cabeceras,
     )
     with urllib.request.urlopen(req, timeout=espera) as r:
         return json.loads(r.read())
@@ -105,6 +114,18 @@ async def descubrir() -> list[dict]:
 
 
 async def deliberar(alerta: str, sujeto: str, busca: str = "riesgo"):
+    """Abre la traza y delega. Todo lo de _deliberar cuelga de este span.
+
+    Se hace con un envoltorio fino en vez de indentar el cuerpo entero dentro
+    de un `with`: menos ruido en el diff y el mismo efecto.
+    """
+    tracer = trazas.iniciar("orquestador")
+    with trazas.span_agente(tracer, "orquestador"):
+        async for evento in _deliberar(alerta, sujeto, busca):
+            yield evento
+
+
+async def _deliberar(alerta: str, sujeto: str, busca: str = "riesgo"):
     """Recorre la deliberacion emitiendo un evento por cada cosa que pasa."""
 
     # ---- 1. DESCUBRIR ----------------------------------------------------

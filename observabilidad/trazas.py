@@ -110,9 +110,12 @@ def iniciar(servicio: str):
 #     ├── execute_tool  lista_sancionados ┘
 #     └── chat                            <- la ronda que concluye
 # ---------------------------------------------------------------------------
-def span_agente(tracer, nombre: str):
-    """Span raiz. Todo lo demas cuelga de aqui, y eso ES el hilo."""
-    ctx = tracer.start_as_current_span(f"invoke_agent {nombre}")
+def span_agente(tracer, nombre: str, padre=None):
+    """Span del agente. Con `padre`, cuelga de la traza de quien lo llamo.
+
+    Ese argumento es lo que convierte tres trazas sueltas en una sola cascada.
+    """
+    ctx = tracer.start_as_current_span(f"invoke_agent {nombre}", context=padre)
     return _con_atributos(ctx, {
         "gen_ai.operation.name": "invoke_agent",
         "gen_ai.agent.name": nombre,
@@ -158,6 +161,49 @@ def anotar_tokens(span, modelo: str, prompt: int, completion: int):
     span.set_attribute("tokens.prompt", prompt)
     span.set_attribute("tokens.completion", completion)
     span.set_attribute("model", modelo)
+
+
+# ---------------------------------------------------------------------------
+# PROPAGACION ENTRE AGENTES.
+#
+# Sin esto, cada proceso abre su propio span raiz y en Splunk se ven TRES
+# trazas sueltas: el router por un lado, cada agente por el suyo. Lo que se
+# quiere ver es una sola, con el salto lateral ANIDADO dentro de la
+# conversacion del investigador — el ping-pong de las cuatro terminales en una
+# imagen.
+#
+# El mecanismo es el estandar de W3C: una cabecera `traceparent` viaja con la
+# peticion HTTP. Quien la recibe la extrae y cuelga sus spans de ahi.
+#
+# Funciona porque A2A va sobre HTTP. Con un bus de mensajes en medio habria que
+# meter el contexto dentro del sobre y que el bus lo respetara.
+# ---------------------------------------------------------------------------
+def inyectar(cabeceras: dict) -> dict:
+    """Mete el contexto de traza actual en unas cabeceras HTTP."""
+    if not HAY_OTEL:
+        return cabeceras
+    try:
+        from opentelemetry.propagate import inject
+        inject(cabeceras)
+    except Exception:
+        pass
+    return cabeceras
+
+
+def extraer(cabeceras) -> object | None:
+    """Saca el contexto de traza de unas cabeceras recibidas.
+
+    Devuelve None si no hay nada que extraer, y entonces el span que se abra
+    sera raiz. Eso es lo correcto: una peticion sin traceparent empieza una
+    traza nueva.
+    """
+    if not HAY_OTEL:
+        return None
+    try:
+        from opentelemetry.propagate import extract
+        return extract({k.lower(): v for k, v in dict(cabeceras).items()})
+    except Exception:
+        return None
 
 
 @contextlib.contextmanager

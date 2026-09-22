@@ -410,8 +410,11 @@ class Agente:
         sobre("sale", f"{self.rol} -> {vecino}", peticion)
 
         import urllib.request
-        req = urllib.request.Request(url, method="POST",
-                                     headers={"Content-Type": "application/json"},
+        # El salto lateral lleva el contexto: asi la conversacion con el vecino
+        # aparece ANIDADA dentro de la de este agente, y no como una traza
+        # aparte que nadie relaciona.
+        cabeceras = trazas.inyectar({"Content-Type": "application/json"})
+        req = urllib.request.Request(url, method="POST", headers=cabeceras,
                                      data=json.dumps(peticion).encode())
         with urllib.request.urlopen(req, timeout=180) as r:
             respuesta = json.loads(r.read())
@@ -441,11 +444,14 @@ def construir(rol: str, url_mcp: str) -> Starlette:
     async def a2a(req):
         peticion = await req.json()
         sobre("entra", f"-> {rol}", peticion)
+        # El contexto de traza viaja en las cabeceras. Si viene, este agente
+        # cuelga sus spans de la traza de quien lo llamo; si no, empieza una.
+        padre = trazas.extraer(req.headers)
 
         partes = peticion.get("params", {}).get("message", {}).get("parts", [])
         tarea = next((p.get("text", "") for p in partes if p.get("kind") == "text"), "")
 
-        with trazas.span_agente(agente.tracer, f"agente-{rol}"):
+        with trazas.span_agente(agente.tracer, f"agente-{rol}", padre=padre):
             mio = await agente.opinar(tarea)
             print(f"\n  [{rol}] dice: {mio['texto'][:300]}\n", flush=True)
 

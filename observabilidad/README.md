@@ -81,6 +81,36 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 .venv/bin/python spike-mcp/age
 es deliberado: la observabilidad no puede tumbar el demo. `trazas.iniciar()`
 devuelve un tracer de mentira que se traga todas las llamadas.
 
+## La cascada completa
+
+Con la propagación de contexto puesta, los tres procesos producen **una sola
+traza**:
+
+```
+invoke_agent  orquestador
+├── invoke_agent  agente-investigador
+│   ├── chat                         ← decide qué necesita
+│   ├── execute_tool  contexto_alerta
+│   ├── execute_tool  consulta_historial
+│   ├── execute_tool  lista_sancionados
+│   ├── chat                         ← arma su argumento
+│   └── invoke_agent  agente-defensor   ← EL SALTO LATERAL, anidado
+│       ├── chat
+│       ├── execute_tool  ...
+│       └── chat
+└── chat                             ← la síntesis del orquestador
+```
+
+Eso es el ping-pong de las cuatro terminales en una imagen, con los tiempos
+reales.
+
+Funciona con una cabecera `traceparent` de W3C que viaja en cada petición HTTP.
+Quien la recibe extrae el contexto y cuelga sus spans de ahí.
+
+**Y esto solo es posible porque A2A va sobre HTTP.** Con un bus de mensajes en
+medio habría que meter el contexto dentro del sobre y confiar en que el bus lo
+respetara — otro punto a favor de la decisión del `CLAUDE.md` §3.
+
 ## Lo que falta
 
 **Las trazas cubren el agente, no el servidor MCP.** Los spans `execute_tool`
