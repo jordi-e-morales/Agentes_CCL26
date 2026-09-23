@@ -72,10 +72,28 @@ kubectl get nodes >/dev/null 2>&1 || {
 # entorno, nunca por argumento: los argumentos se ven en `ps`.
 if [ -z "${SPLUNK_TOKEN:-}" ]; then
   echo ""
-  read -rsp "Token de ingesta de Splunk (no se mostrara): " SPLUNK_TOKEN
+  echo "Necesitas un token con alcance INGEST (Settings -> Access Tokens)."
+  echo "El de API NO sirve para enviar trazas: da 401."
+  read -rsp "Token de ingesta (no se mostrara): " SPLUNK_TOKEN
   echo ""
 fi
+# Se quitan espacios y saltos de linea de los extremos.
+#
+# Copiar un token de una pagina web se lleva de propina un espacio o un \n mas
+# veces de las que parece, y el sintoma es un 401 identico al de un token
+# equivocado: horas persiguiendo permisos cuando sobraba un caracter.
+SPLUNK_TOKEN="$(printf '%s' "$SPLUNK_TOKEN" | tr -d '[:space:]')"
 [ -z "$SPLUNK_TOKEN" ] && { echo "Sin token no hay nada que hacer."; exit 1; }
+
+# Un token de ingesta de Splunk es un UUID. Si lo que pegaste es mucho mas
+# largo, casi seguro es un token de API o de sesion, que dan 401 en ingesta.
+if [ "${#SPLUNK_TOKEN}" -gt 60 ]; then
+  echo ""
+  echo "  AVISO: ese token tiene ${#SPLUNK_TOKEN} caracteres, y los de ingesta"
+  echo "  suelen ser bastante mas cortos. Comprueba en Settings -> Access Tokens"
+  echo "  que el que usas tenga el alcance INGEST y no solo API."
+  echo ""
+fi
 
 log "Comprobando que el CLUSTER alcanza Splunk"
 # Desde un POD, no desde el host. Es la misma trampa que con vLLM: el host casi
