@@ -259,7 +259,19 @@ async def prompts(_req):
     try:
         from mcp import Client
         async with Client(URL_MCP) as cli:
-            for h in await cli.list_tools():
+            # `.tools`, NO el resultado a secas.
+            #
+            # list_tools() devuelve un ListToolsResult, que es un modelo de
+            # pydantic. Iterarlo directamente NO da las herramientas: da tuplas
+            # (campo, valor) de sus atributos, y el error que sale es
+            # "'tuple' object has no attribute 'name'" — tres niveles dentro de
+            # un ExceptionGroup, o sea invisible.
+            #
+            # malla/agente.py ya lo hacia bien. Mirarlo habria costado diez
+            # segundos y me ahorro media hora de perseguir un port-forward que
+            # estaba perfecto.
+            catalogo = await cli.list_tools()
+            for h in catalogo.tools:
                 catalogo.append({
                     "nombre": h.name,
                     "descripcion": (h.description or "").strip().split("\n")[0],
