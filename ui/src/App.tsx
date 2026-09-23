@@ -535,9 +535,22 @@ function Prompts() {
                   </p>
                 )}
 
+                {/* TRES ESTADOS, NO DOS. El tercero costo un rato:
+                    si el backend es viejo no manda `herramientas` NI
+                    `herramientas_fallo`, asi que el panel se quedaba mudo y
+                    parecia que la funcion no existia. Un hueco en blanco es el
+                    peor mensaje de error posible. */}
                 {d.herramientas_fallo && (
                   <p className="tenue" style={{ fontSize: 12, margin: 0 }}>
                     {d.herramientas_fallo}
+                  </p>
+                )}
+                {!d.herramientas && !d.herramientas_fallo && !d.nota && (
+                  <p style={{
+                    fontSize: 12, margin: 0, color: "var(--aviso)",
+                    fontFamily: "var(--fuente-mono)",
+                  }}>
+                    el backend no mandó la lista — ¿reiniciaste ui/servidor.py?
                   </p>
                 )}
 
