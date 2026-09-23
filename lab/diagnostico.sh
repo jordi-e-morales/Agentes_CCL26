@@ -19,7 +19,20 @@ echo "=== 1. Procesos viejos en el host"
 # LA CAUSA MAS COMUN al pasar los agentes a pods. Si un `python agente.py`
 # quedo vivo, ocupa el 7010 o el 7011, el port-forward no puede escuchar y la
 # interfaz sigue hablando con el proceso viejo sin que nada avise.
-viejos=$(pgrep -af "malla/agente.py" 2>/dev/null)
+#
+# EL -v /app/ NO ES OPCIONAL, y este script nacio sin el.
+#
+# Los nodos de kind son contenedores, asi que sus procesos SE VEN en la tabla de
+# procesos del host. Un `pgrep -af malla/agente.py` a secas encuentra tambien a
+# los agentes que corren DENTRO de los pods, y los delata como si fueran
+# procesos viejos del host. La primera corrida de este script acuso a los dos
+# pods que acababan de arrancar bien.
+#
+# La ruta es lo que los distingue: dentro del contenedor el codigo esta en
+# /app/malla/agente.py; en el host es una ruta del repo. La otra pista, por si
+# alguna vez hace falta a mano, es que los dos pods dicen --puerto 7010 (cada
+# uno tiene su propia IP), mientras que en el host el defensor era el 7011.
+viejos=$(pgrep -af "malla/agente.py" 2>/dev/null | grep -v " /app/")
 if [ -n "$viejos" ]; then
   mal "hay agentes viejos corriendo en el host:"
   echo "$viejos" | sed 's/^/        /'

@@ -92,6 +92,38 @@ bash seguridad/ver-eventos.sh --seguir
 El script resuelve las dos: busca el nodo donde vive el servidor de
 herramientas, le pregunta al Tetragon de *ese* nodo, y lee el histórico.
 
+## La política le cortó el transporte a su propio equipo
+
+Medido el 2026-09-23, la primera vez que los agentes corrieron como pods de
+verdad. El agente devolvía **500** y Hubble tenía la respuesta:
+
+```
+http-request DROPPED (HTTP/1.1 GET http://servidor-mcp:9000/mcp)
+```
+
+La regla permitía `POST /mcp` y nada más. Pero Streamable HTTP, el transporte de
+MCP, usa tres métodos para cosas distintas:
+
+| Método | Para qué |
+|---|---|
+| `POST` | las peticiones JSON-RPC — **aquí** viajan las llamadas a herramientas |
+| `GET` | abre el canal SSE por el que el servidor manda sus mensajes |
+| `DELETE` | cierra la sesión |
+
+Sin el `GET` el cliente no puede abrir el canal y la sesión MCP nunca se
+establece. Es **el segundo caso** de una política bien escrita bloqueando a su
+propio equipo: el primero fue la lista blanca de Tetragon matando nuestro `cat`.
+
+**Y la lectura fácil es la equivocada.** Esto no debilita el argumento del
+segmento 6, lo afila: sigue siendo una sola ruta para las seis herramientas, y
+ahora además se ve que la red no distingue ni entre *abrir un canal* y *disponer
+de un caso*. Uno es `GET` y el otro `POST`, los dos son `/mcp`, y **cuál de los
+dos es peligroso no se deduce del método.**
+
+Sirve también como respuesta honesta a quien pregunte *"¿y no basta con permitir
+solo lo que hace falta?"*: eso es exactamente lo que se hizo, y lo que hacía
+falta no era lo que parecía.
+
 ## Ver lo que vio la red, y lo que la aplicación calló
 
 ```bash
