@@ -117,17 +117,45 @@ echo "=== 3. Los puentes que la interfaz necesita"
 #
 # El del servidor MCP se queda solo para poder probar herramientas a mano; la
 # deliberacion no lo usa.
-comprobar_puente() {  # puerto  deploy  destino_en_el_pod
-  if curl -s --max-time 3 -o /dev/null "http://localhost:$1/" 2>/dev/null; then
-    quien=$(curl -s --max-time 3 "http://localhost:$1/salud" 2>/dev/null)
-    ok "$1 responde  ${quien:-(sin /salud, normal en el MCP)}"
+# CADA PUENTE SE COMPRUEBA CONTRA LO QUE DE VERDAD SIRVE.
+#
+# La version anterior pedia "/" a los dos y enseñaba la respuesta cruda. Con el
+# servidor MCP eso imprimia:
+#
+#     ok    9000 responde  Not Found
+#
+# que es verdad y se lee como un fallo. El 404 es correcto —ese servidor solo
+# sirve /mcp— pero un diagnostico que dice "ok" y "Not Found" en la misma linea
+# no vale para nada.
+#
+# Ojo con una trampa: a /mcp NO se le puede pedir un GET para comprobarlo,
+# porque ahi el transporte abre el canal SSE y la peticion se queda colgada.
+# Lo que se comprueba es que el puente ENTREGA, o sea que hay algo HTTP al otro
+# lado, y eso lo dice cualquier codigo de estado.
+comprobar_orquestador() {
+  quien=$(curl -s --max-time 3 "http://localhost:7012/salud" 2>/dev/null)
+  if echo "$quien" | grep -q version_codigo; then
+    ok "7012 orquestador  $quien"
   else
-    mal "$1 NO responde ($2)"
-    nota "  kubectl -n $NS port-forward deploy/$2 $1:$3"
+    mal "7012 el orquestador no responde en /salud"
+    nota "  kubectl -n $NS port-forward deploy/orquestador 7012:7012"
   fi
 }
-comprobar_puente 7012 orquestador 7012
-comprobar_puente 9000 servidor-mcp 9000
+
+comprobar_mcp() {
+  # -o /dev/null: no se enseña el cuerpo, solo si hubo respuesta HTTP.
+  codigo=$(curl -s --max-time 3 -o /dev/null -w "%{http_code}" \
+    "http://localhost:9000/" 2>/dev/null)
+  if [ -n "$codigo" ] && [ "$codigo" != "000" ]; then
+    ok "9000 servidor-mcp  puente abierto"
+  else
+    mal "9000 el servidor de herramientas no responde"
+    nota "  kubectl -n $NS port-forward deploy/servidor-mcp 9000:9000"
+  fi
+}
+
+comprobar_orquestador
+comprobar_mcp
 
 # Si quedan los viejos puestos no rompen nada, pero conviene saberlo: tenerlos
 # invita a pensar que la interfaz les habla.
