@@ -201,6 +201,38 @@ async def gpu(_req):
                              "salida": f"no se pudo consultar la GPU: {type(e).__name__}: {e}"})
 
 
+def causa_real(e: BaseException) -> str:
+    """Saca la excepcion de dentro de un ExceptionGroup.
+
+    POR QUE HACE FALTA
+    ------------------
+    El cliente de MCP usa grupos de tareas de anyio, y cuando algo falla dentro
+    lo que sale es `ExceptionGroup` — que como mensaje de error no dice
+    absolutamente nada. Medido el 2026-09-23: el panel informaba
+    "(ExceptionGroup)" cuando la causa real era que faltaba un port-forward.
+
+    Un error que no apunta a su causa cuesta mas que no tener error, porque
+    manda a buscar en el sitio equivocado.
+    """
+    vistos = []
+    def hurgar(x, hondo=0):
+        if hondo > 4:
+            return
+        # ExceptionGroup (3.11+) y BaseExceptionGroup llevan .exceptions.
+        sub = getattr(x, "exceptions", None)
+        if sub:
+            for y in sub:
+                hurgar(y, hondo + 1)
+        else:
+            texto = str(x).strip()
+            vistos.append(f"{type(x).__name__}" + (f": {texto}" if texto else ""))
+    hurgar(e)
+    # Se quitan repetidos conservando el orden: un grupo suele traer la misma
+    # causa varias veces, una por tarea.
+    unicos = list(dict.fromkeys(vistos))
+    return " / ".join(unicos[:3]) if unicos else type(e).__name__
+
+
 async def prompts(_req):
     """Los prompts de los agentes, tal cual estan en el codigo.
 
@@ -237,7 +269,7 @@ async def prompts(_req):
                     "actua": h.name in ("dispone_caso", "exporta_evidencia"),
                 })
     except Exception as e:
-        fallo = f"no alcanzo el servidor MCP en {URL_MCP} ({type(e).__name__})"
+        fallo = f"no alcanzo el servidor MCP en {URL_MCP}: {causa_real(e)}"
 
     salida = [
         {"rol": rol, "prompt": cfg["prompt"], "vecino": cfg["vecino"],
