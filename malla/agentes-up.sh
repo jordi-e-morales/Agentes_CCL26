@@ -29,6 +29,11 @@ log() { echo ""; echo "=== $1"; }
 case "${1:-}" in
   --logs) exec kubectl -n "$NS" logs -f "deploy/${2:-investigador}" ;;
   --down) kubectl -n "$NS" delete -f "$DIR/00-agentes.yaml" --ignore-not-found
+          # La politica y el EndpointSlice de vLLM los genera publica-vllm.sh,
+          # asi que no estan en el manifiesto y hay que nombrarlos aqui.
+          kubectl -n "$NS" delete ciliumnetworkpolicy agentes-vllm-host \
+            --ignore-not-found >/dev/null
+          kubectl -n "$NS" delete endpointslice vllm --ignore-not-found >/dev/null
           echo "agentes eliminados"; exit 0 ;;
 esac
 

@@ -61,23 +61,94 @@ if ! kubectl -n "$NS" get svc vllm >/dev/null 2>&1; then
   exit 1
 fi
 
-# El nombre del Endpoints DEBE coincidir con el del Service: asi es como
-# Kubernetes los une. No hay campo que los relacione.
+# EndpointSlice, no Endpoints.
 #
-# La API Endpoints esta marcada como deprecada en favor de EndpointSlice, pero
-# para un Service sin selector sigue siendo el camino soportado: el controlador
-# de mirroring copia estos Endpoints a EndpointSlices solo.
-log "Escribiendo los Endpoints"
+# La v1 usaba `kind: Endpoints`, y sigue funcionando, pero en Kubernetes 1.33+
+# avisa de que esta deprecado. Un warning en pantalla el dia del evento es ruido
+# que hay que explicar, asi que se usa el recurso moderno.
+#
+# La diferencia que importa: un EndpointSlice se une a su Service por la
+# ETIQUETA `kubernetes.io/service-name`, no por el nombre. Con Endpoints era el
+# nombre. Si esa etiqueta falta, el Service se queda sin destinos y no hay
+# ningun error — simplemente nada conecta.
+# Limpieza del recurso viejo, si quedo de una corrida anterior de este script.
+#
+# Un Service no puede tener las dos cosas: el controlador de mirroring convierte
+# un `Endpoints` manual en su propio EndpointSlice, asi que junto con el nuestro
+# el Service acabaria con destinos duplicados. Funcionaria por casualidad hasta
+# que uno de los dos quedara desactualizado.
+if kubectl -n "$NS" get endpoints vllm >/dev/null 2>&1; then
+  log "Quitando el Endpoints viejo (lo reemplaza el EndpointSlice)"
+  kubectl -n "$NS" delete endpoints vllm >/dev/null
+  # El slice espejo que creo el controlador se va con el.
+  kubectl -n "$NS" delete endpointslice \
+    -l "endpointslice.kubernetes.io/managed-by=endpointslicemirroring-controller,kubernetes.io/service-name=vllm" \
+    --ignore-not-found >/dev/null 2>&1 || true
+  echo "  quitado"
+fi
+
+log "Escribiendo el EndpointSlice"
 kubectl apply -f - <<EOF >/dev/null
-apiVersion: v1
-kind: Endpoints
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
 metadata:
   name: vllm
   namespace: $NS
-subsets:
-  - addresses: [{ip: "$IP_HOST"}]
-    ports: [{port: $PUERTO}]
+  labels:
+    kubernetes.io/service-name: vllm
+addressType: IPv4
+ports:
+  - {name: http, port: $PUERTO, protocol: TCP}
+endpoints:
+  - addresses: ["$IP_HOST"]
+    conditions: {ready: true}
 EOF
+
+# LA POLITICA DE SALIDA HACIA EL MODELO, CON LA IP REAL.
+#
+# Esto no esta en seguridad/cilium-l7.yaml a proposito, y la razon esta medida:
+#
+#   `toEntities: [host]` NO MATCHEA en kind. Cilium no clasifica la puerta de
+#   enlace de la red Docker como la entidad `host` — esa entidad es el nodo, que
+#   tiene otra IP. La regla no aplica y el egress al modelo se queda en timeout,
+#   sin nada en el log que apunte a la politica.
+#
+# La v1 llego a la misma conclusion y la dejo escrita en
+# deploy/vllm-host/egress-up.sh. Se copia de ahi.
+#
+# REQUISITO DE ORDEN: `agentes-salida` (en cilium-l7.yaml) tiene que existir
+# ANTES, porque es la que lleva la regla de DNS. Cualquier politica con egress
+# pone al pod en denegacion por omision; si esta se aplicara sola, los agentes
+# perderian la resolucion de nombres y el fallo no se pareceria a su causa.
+if kubectl -n "$NS" get ciliumnetworkpolicy agentes-salida >/dev/null 2>&1; then
+  log "Permitiendo la salida al modelo ($IP_HOST/32:$PUERTO)"
+  kubectl apply -f - <<EOF >/dev/null
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: agentes-vllm-host
+  namespace: $NS
+spec:
+  endpointSelector:
+    matchLabels:
+      rol: agente
+  egress:
+    - toCIDRSet:
+        - cidr: $IP_HOST/32
+      toPorts:
+        - ports:
+            - {port: "$PUERTO", protocol: TCP}
+EOF
+  echo "  ok"
+else
+  log "Sin politica de red todavia"
+  echo "  No encuentro 'agentes-salida', asi que los agentes no estan en"
+  echo "  denegacion por omision y alcanzan el modelo sin necesitar regla."
+  echo ""
+  echo "  Cuando apliques las politicas, vuelve a correr este script:"
+  echo "    kubectl apply -f seguridad/cilium-l7.yaml"
+  echo "    ./lab/publica-vllm.sh"
+fi
 
 log "Comprobando desde dentro del cluster"
 # Se prueba desde un pod de verdad. Comprobarlo desde el host no demuestra nada:
@@ -94,9 +165,13 @@ except Exception as e:
   if [[ "$modelos" == FALLO* ]]; then
     echo "  $modelos"
     echo ""
-    echo "  Si vLLM esta corriendo, lo mas probable es la politica de red:"
-    echo "    kubectl apply -f seguridad/cilium-l7.yaml"
-    echo "  (la regla de salida hacia 'host' en el puerto $PUERTO)"
+    echo "  Para saber si es la red o es vLLM, comprueba desde el HOST:"
+    echo "    curl -s http://$IP_HOST:$PUERTO/v1/models | head -c 120"
+    echo ""
+    echo "  Si eso responde, vLLM esta bien y el problema es la politica."
+    echo "  Si no responde, vLLM no escucha en esa interfaz:"
+    echo "    docker ps --filter name=vllm --format '{{.Ports}}'"
+    echo "  Tiene que decir 0.0.0.0:$PUERTO, no 127.0.0.1:$PUERTO."
   else
     echo "  ok  el pod alcanza el modelo: $modelos"
   fi

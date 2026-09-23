@@ -103,17 +103,25 @@ spec:
         - ports:
             - {port: "4318", protocol: TCP}
 
-    # El motor de inferencia vive FUERA del cluster, en el host. "host" es la
-    # entidad de Cilium para el nodo local; sin esto el agente no alcanza vLLM.
+    # EL MOTOR DE INFERENCIA NO ESTA AQUI, Y SU REGLA TAMPOCO.
     #
-    # Aplica aunque el agente llame a `http://vllm:8000`: ese Service no tiene
-    # selector y sus Endpoints apuntan a la IP del host, asi que para Cilium el
-    # trafico va a la entidad `host`.
-    - toEntities:
-        - host
-      toPorts:
-        - ports:
-            - {port: "8000", protocol: TCP}
+    # vLLM corre fuera del cluster, en el host, y la regla que lo permite la
+    # escribe lab/publica-vllm.sh — no este archivo. El motivo es que necesita
+    # una IP que se calcula:
+    #
+    #   `toEntities: [host]` NO FUNCIONA en kind. Medido en la v1 y vuelto a
+    #   ver el 2026-09-23: Cilium no clasifica la puerta de enlace de la red
+    #   Docker (172.18.0.1) como la entidad `host` — esa entidad es el NODO
+    #   (172.18.0.2), que es otra cosa. La regla no matchea y el egress al
+    #   modelo se queda en timeout, sin nada en el log que lo explique.
+    #
+    #   Lo que si funciona es un toCIDRSet /32 con la IP de esa puerta. Y esa
+    #   IP cambia en cada reconstruccion del lab, asi que no se puede teclear
+    #   aqui: se calcula donde ya se calcula todo lo demas del host.
+    #
+    # Aplicar esta politica SIN correr publica-vllm.sh deja a los agentes sin
+    # modelo, porque seleccionarlos aqui los pone en denegacion por omision.
+    # agentes-up.sh corre las dos cosas en orden, y por eso es el camino bueno.
 
   # NO hay regla hacia postgres. Esa omision es deliberada y es el demo: el
   # agente NO puede ir directo a la base. Tiene que pasar por la herramienta.
