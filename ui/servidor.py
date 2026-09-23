@@ -74,6 +74,9 @@ URL_ORQUESTADOR = os.getenv("URL_ORQUESTADOR", "http://localhost:7012")
 # Solo para PREGUNTARLE que herramientas publica. La interfaz no llama ninguna:
 # quien las usa son los agentes, desde dentro del cluster.
 URL_MCP = os.getenv("URL_MCP", "http://localhost:9000/mcp")
+# El motor de inferencia, en el host. Solo para PREGUNTARLE que modelo sirve:
+# quien lo usa para inferir son los agentes, desde el cluster.
+BASE_VLLM = os.getenv("BASE_VLLM", "http://localhost:8000")
 
 
 async def deliberar(req):
@@ -231,6 +234,90 @@ def causa_real(e: BaseException) -> str:
     # causa varias veces, una por tarea.
     unicos = list(dict.fromkeys(vistos))
     return " / ".join(unicos[:3]) if unicos else type(e).__name__
+
+
+async def modelo(_req):
+    """EL MODELO. Uno solo, y es el que sostiene a los tres agentes.
+
+    POR QUE ESTE PANEL EXISTE
+    -------------------------
+    El segmento 1 afirma que un agente no es un modelo, y hasta ahora enseñaba
+    los agentes y del modelo no decia nada. La afirmacion se quedaba en palabra
+    del presentador.
+
+    Aqui esta el otro lado: un motor, unos pesos, unas opciones de despliegue.
+    Los tres agentes que se ven al lado corren sobre esto.
+
+    TODO SE LEE DEL PROCESO QUE ESTA CORRIENDO. Nada escrito a mano:
+
+      /v1/models        se lo pregunta al propio motor
+      docker inspect    los argumentos REALES con los que arranco
+      docker logs       lo que midio al cargar los pesos
+
+    Si alguien relanza vLLM con otra cuantizacion, este panel lo dice sin que
+    nadie toque la interfaz. Una lista escrita a mano seria una descripcion, y
+    podria mentir — la misma regla que aplicamos a las herramientas.
+    """
+    async def correr(*cmd, espera=8):
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd, stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL)
+            out, _ = await asyncio.wait_for(proc.communicate(), timeout=espera)
+            return out.decode(errors="replace")
+        except Exception:
+            return ""
+
+    datos = {"hay": False}
+
+    # 1. Lo que el motor dice de si mismo.
+    crudo = await correr("curl", "-s", "--max-time", "5",
+                         f"{BASE_VLLM}/v1/models")
+    try:
+        m = json.loads(crudo)["data"][0]
+        datos["id"] = m.get("id")
+        datos["ventana"] = m.get("max_model_len")
+        datos["hay"] = True
+    except Exception:
+        return JSONResponse({
+            "hay": False,
+            "motivo": f"vLLM no responde en {BASE_VLLM}. ¿Está corriendo?",
+        })
+
+    # 2. Con que argumentos arranco. Es la parte que la sala no espera ver.
+    args = await correr("docker", "inspect", "-f", "{{json .Args}}", "vllm")
+    opciones = []
+    try:
+        lista = json.loads(args)
+        i = 0
+        while i < len(lista):
+            a = lista[i]
+            if a.startswith("--"):
+                # Un flag puede llevar valor o ser un interruptor. Se mira si lo
+                # siguiente es otro flag para no robarle su valor.
+                if i + 1 < len(lista) and not lista[i + 1].startswith("--"):
+                    opciones.append({"flag": a, "valor": lista[i + 1]}); i += 2
+                else:
+                    opciones.append({"flag": a, "valor": None}); i += 1
+            else:
+                i += 1
+    except Exception:
+        pass
+    datos["opciones"] = opciones
+
+    # 3. Lo que MIDIO al arrancar. Son las lineas mas elocuentes del log: dicen
+    # cuanta memoria se fue en pesos y cuanta quedo para la cache, que es lo que
+    # de verdad limita cuantos agentes pueden hablar a la vez.
+    log = await correr("docker", "logs", "--tail", "400", "vllm", espera=10)
+    medidas = []
+    for linea in log.splitlines():
+        b = linea.strip()
+        if any(x in b for x in ("model weights took", "KV cache size",
+                                "Maximum concurrency", "GPU blocks")):
+            # Se quita el prefijo de fecha y nivel, que no aporta en pantalla.
+            medidas.append(b.split("] ")[-1][:160])
+    datos["medidas"] = medidas[-4:]
+    return JSONResponse(datos)
 
 
 async def prompts(_req):
@@ -582,6 +669,7 @@ rutas = [
     Route("/api/gpu", gpu),
     Route("/api/eventos-kernel", eventos_kernel),
     Route("/api/hubble", hubble),
+    Route("/api/modelo", modelo),
     Route("/api/trazas", trazas_recientes),
     Route("/api/prompts", prompts),
     Route("/api/agentes", agentes),

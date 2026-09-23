@@ -221,7 +221,14 @@ export default function App() {
             hardware, y que lo unico que los separa es el prompt. Con el
             hardware a la derecha, fijo, y las dos identidades a la izquierda,
             la pantalla dice eso sola antes de que nadie lo explique. */}
-        {segmento === 1 && <Prompts />}
+        {segmento === 1 && (
+          <>
+            {/* EL MODELO PRIMERO, LOS AGENTES DEBAJO. El orden es el argumento:
+                una cosa arriba, tres debajo, y las tres salen de la de arriba. */}
+            <Modelo />
+            <Prompts />
+          </>
+        )}
 
         {/* Segmento 6: tampoco necesita corrida, y ese es el punto. */}
         {segmento === 6 && (
@@ -1094,6 +1101,106 @@ function Red({ activo, corridaId }: { activo: boolean; corridaId: number }) {
           </div>
         );
       })}
+    </div>
+  );
+}
+
+/* EL MODELO. La mitad que le faltaba al segmento 1.
+ *
+ * El segmento afirma que un agente no es un modelo, y hasta el 2026-09-23
+ * enseñaba los agentes y del modelo no decia nada: la afirmacion se quedaba en
+ * palabra del presentador.
+ *
+ * Aqui esta el otro lado, y todo leido del proceso que esta corriendo: lo que
+ * el motor dice de si mismo, los argumentos con los que arranco de verdad, y lo
+ * que midio al cargar los pesos. Si alguien relanza vLLM con otra
+ * cuantizacion, este panel lo dice sin que nadie toque la interfaz.
+ */
+function Modelo() {
+  const [d, setD] = useState<any>(null);
+
+  useEffect(() => {
+    fetch("/api/modelo").then((r) => r.json()).then(setD)
+      .catch((e) => setD({ hay: false, motivo: String(e) }));
+  }, []);
+
+  return (
+    <div className="panel">
+      <div style={{ fontWeight: 600 }}>
+        El modelo
+        <Info>
+          Uno solo, en un servidor, con unos pesos cargados. Los tres agentes de
+          abajo corren sobre esto. Nada de lo que se ve aquí está escrito en la
+          interfaz: sale de preguntarle al motor y de mirar con qué argumentos
+          arrancó.
+        </Info>
+      </div>
+
+      {!d && <p className="tenue" style={{ fontSize: 13, margin: "6px 0 0" }}>consultando…</p>}
+      {d && !d.hay && (
+        <p className="tenue" style={{ fontSize: 13, margin: "6px 0 0" }}>
+          {d.motivo ?? "no se pudo consultar el motor"}
+        </p>
+      )}
+
+      {d?.hay && (
+        <>
+          {/* Lo que se lee a cuatro metros. */}
+          <div style={{ display: "flex", gap: 18, marginTop: 10,
+                        flexWrap: "wrap", alignItems: "baseline" }}>
+            <div style={{
+              fontFamily: "var(--fuente-mono)", fontSize: 20, fontWeight: 700,
+              color: "var(--cisco-cian)",
+            }}>
+              {d.id}
+            </div>
+            {d.ventana && (
+              <Cifra valor={(d.ventana / 1024).toFixed(0) + "k"}
+                     etiqueta="ventana de contexto" />
+            )}
+          </div>
+
+          {/* Los argumentos REALES. Esto es lo que nadie espera ver, y es lo
+              que hace creible todo lo demas: no es un diagrama, es la linea de
+              comandos del proceso que esta sirviendo las respuestas. */}
+          {d.opciones?.length > 0 && (
+            <div style={{ marginTop: 12 }}>
+              <div className="tenue" style={{ fontSize: 12, marginBottom: 5 }}>
+                cómo se desplegó · <code>docker inspect vllm</code>
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                {d.opciones.map((o: any) => (
+                  <span key={o.flag} style={{
+                    fontFamily: "var(--fuente-mono)", fontSize: 12,
+                    padding: "3px 8px", borderRadius: 5,
+                    background: "var(--fondo)",
+                    border: "1px solid var(--borde)",
+                    color: "var(--texto-suave)",
+                  }}>
+                    {o.flag}
+                    {o.valor && (
+                      <strong style={{ color: "var(--texto)" }}> {o.valor}</strong>
+                    )}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Lo que MIDIO al arrancar. Estas lineas explican por que no caben
+              dos modelos en esta GPU, que es una pregunta que la sala hace. */}
+          {d.medidas?.length > 0 && (
+            <div style={{ marginTop: 12 }}>
+              <div className="tenue" style={{ fontSize: 12, marginBottom: 5 }}>
+                lo que midió al cargar · <code>docker logs vllm</code>
+              </div>
+              <pre className="sobre mono" style={{ fontSize: 11, marginTop: 0 }}>
+{d.medidas.join("\n")}
+              </pre>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
