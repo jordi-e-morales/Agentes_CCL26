@@ -479,8 +479,20 @@ function Prompts() {
   const [datos, setDatos] = useState<any[]>([]);
   const [abierto, setAbierto] = useState<string | null>(null);
 
+  // EL CATCH VACIO ERA UNA TRAMPA.
+  //
+  // Antes esto era `.catch(() => {})`, asi que si el endpoint reventaba el panel
+  // se quedaba en "cargando…" para siempre. Y "cargando…" eterno no distingue
+  // "va lento" de "reventó": mandaba a esperar en vez de a mirar el error.
+  const [fallo, setFallo] = useState<string | null>(null);
   useEffect(() => {
-    fetch("/api/prompts").then((r) => r.json()).then(setDatos).catch(() => {});
+    fetch("/api/prompts")
+      .then(async (r) => {
+        if (!r.ok) throw new Error(`el backend respondió ${r.status}`);
+        return r.json();
+      })
+      .then(setDatos)
+      .catch((e) => setFallo(String(e.message || e)));
   }, []);
 
   return (
@@ -494,7 +506,16 @@ function Prompts() {
           ninguna herramienta; los otros dos llegan a las seis.
         </Info>
       </div>
-      {datos.length === 0 && <p className="tenue" style={{ fontSize: 13 }}>cargando…</p>}
+      {fallo && (
+        <p style={{
+          fontSize: 13, color: "var(--aviso)", fontFamily: "var(--fuente-mono)",
+          margin: "8px 0 0",
+        }}>
+          {fallo} — mira la terminal de ui/servidor.py
+        </p>
+      )}
+      {!fallo && datos.length === 0 &&
+        <p className="tenue" style={{ fontSize: 13 }}>cargando…</p>}
       {datos.map((d) => (
         <div key={d.rol} style={{ marginTop: 10 }}>
           <button
