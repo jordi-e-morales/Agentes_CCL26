@@ -270,8 +270,15 @@ async def prompts(_req):
             # malla/agente.py ya lo hacia bien. Mirarlo habria costado diez
             # segundos y me ahorro media hora de perseguir un port-forward que
             # estaba perfecto.
-            catalogo = await cli.list_tools()
-            for h in catalogo.tools:
+            # DOS NOMBRES, no uno.
+            #
+            # Aqui hubo un 500 tonto: se reusaba `catalogo` para el resultado
+            # de MCP y para la lista que se construye. El .append reventaba, el
+            # except se lo tragaba, y lo que acababa en JSONResponse era el
+            # objeto de pydantic — que no es serializable. El error final no se
+            # parecia en nada a la causa.
+            resultado = await cli.list_tools()
+            for h in resultado.tools:
                 catalogo.append({
                     "nombre": h.name,
                     "descripcion": (h.description or "").strip().split("\n")[0],
