@@ -1,12 +1,12 @@
 {
-  "name": "router-tareas",
+  "name": "orquestador",
   "description": "Clasifica la tarea, lee las Agent Cards de los demas y despacha al que declara la habilidad que hace falta. Despues sintetiza lo que dijeron. No tiene herramientas.",
   "version": "1.0.0",
   "supportedInterfaces": [
     {
       "protocolBinding": "JSONRPC",
       "protocolVersion": "0.3.0",
-      "url": "http://router.agentes.svc.cluster.local:7012/deliberar"
+      "url": "http://orquestador.agentes.svc.cluster.local:7012/deliberar"
     }
   ],
   "defaultInputModes": [

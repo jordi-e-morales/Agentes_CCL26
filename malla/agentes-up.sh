@@ -54,7 +54,7 @@ kubectl apply -f "$DIR/00-agentes.yaml" >/dev/null
 # Pods nuevos con la imagen recien cargada: sin esto seguirian con la vieja.
 # Este es el desfase que ya nos mordio tres veces (§9 del CLAUDE.md).
 kubectl -n "$NS" rollout restart \
-  deploy/router deploy/investigador deploy/defensor >/dev/null
+  deploy/orquestador deploy/investigador deploy/defensor >/dev/null
 for d in router investigador defensor; do
   kubectl -n "$NS" rollout status "deploy/$d" --timeout=180s
 done
@@ -105,13 +105,13 @@ print(json.load(urllib.request.urlopen('http://localhost:$2/salud', timeout=5)))
 " 2>/dev/null | tail -1)
   echo "  $1: ${salud:-sin respuesta}"
 }
-comprobar router 7012
+comprobar orquestador 7012
 comprobar investigador 7010
 comprobar defensor 7010
 
 log "Las aristas que ahora SI atraviesan el cluster"
-echo "  router -> agentes             GET /.well-known/agent-card.json  <-- descubrir"
-echo "  router -> investigador        POST /a2a                         <-- despachar"
+echo "  orquestador -> agentes             GET /.well-known/agent-card.json  <-- descubrir"
+echo "  orquestador -> investigador        POST /a2a                         <-- despachar"
 echo "  investigador -> defensor      POST /a2a                         <-- salto lateral"
 echo "  agente -> servidor-mcp        POST /mcp"
 echo "  agente -> vllm (host)         inferencia"
@@ -119,10 +119,10 @@ echo ""
 echo "  El grafo de Hubble ya esta completo: la flecha que pone la malla en"
 echo "  marcha tambien es un paquete. Antes salia del host y no se veia."
 
-log "Para que la interfaz del host alcance al router"
-echo "  Un solo puente, porque la interfaz ya solo habla con el router:"
+log "Para que la interfaz del host alcance al orquestador"
+echo "  Un solo puente, porque la interfaz ya solo habla con el orquestador:"
 echo ""
-echo "    kubectl -n $NS port-forward deploy/router 7012:7012"
+echo "    kubectl -n $NS port-forward deploy/orquestador 7012:7012"
 echo ""
 echo "  Los de investigador y defensor YA NO HACEN FALTA: quien les habla es el"
 echo "  router, desde dentro del cluster. Si los dejas puestos no estorban, pero"

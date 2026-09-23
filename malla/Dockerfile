@@ -51,7 +51,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
 COPY malla/__init__.py         /app/malla/__init__.py
 COPY malla/agente.py          /app/malla/agente.py
 COPY malla/flujo.py           /app/malla/flujo.py
-COPY malla/servidor_router.py /app/malla/servidor_router.py
+COPY malla/servidor_orquestador.py /app/malla/servidor_orquestador.py
 COPY malla/tarjetas/          /app/malla/tarjetas/
 COPY observabilidad/          /app/observabilidad/
 

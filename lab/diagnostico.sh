@@ -68,7 +68,7 @@ comprobar_puente() {  # puerto  deploy  destino_en_el_pod
     nota "  kubectl -n $NS port-forward deploy/$2 $1:$3"
   fi
 }
-comprobar_puente 7012 router 7012
+comprobar_puente 7012 orquestador 7012
 comprobar_puente 9000 servidor-mcp 9000
 
 # Si quedan los viejos puestos no rompen nada, pero conviene saberlo: tenerlos
@@ -104,11 +104,11 @@ except Exception as e:
 done
 
 echo ""
-echo "=== 5. El router alcanza las tarjetas?"
+echo "=== 5. El orquestador alcanza las tarjetas?"
 # "Ningun agente responde" es el mensaje mas engañoso del sistema: suena a que
 # los agentes estan caidos, y lo que suele pasar es que falta la politica
-# router-descubrimiento y la red corta el GET de la tarjeta.
-for pol in agentes-salida router-descubrimiento; do
+# orquestador-descubrimiento y la red corta el GET de la tarjeta.
+for pol in agentes-salida orquestador-descubrimiento; do
   if kubectl -n "$NS" get ciliumnetworkpolicy "$pol" >/dev/null 2>&1; then
     ok "politica $pol aplicada"
   else
@@ -116,8 +116,8 @@ for pol in agentes-salida router-descubrimiento; do
     nota "  kubectl apply -f seguridad/cilium-l7.yaml"
   fi
 done
-if kubectl -n "$NS" get deploy router >/dev/null 2>&1; then
-  r=$(kubectl -n "$NS" exec deploy/router -- python3 -c "
+if kubectl -n "$NS" get deploy orquestador >/dev/null 2>&1; then
+  r=$(kubectl -n "$NS" exec deploy/orquestador -- python3 -c "
 import urllib.request, json
 vivos = []
 for n in ('investigador','defensor'):
@@ -129,8 +129,8 @@ for n in ('investigador','defensor'):
 print(' '.join(vivos))
 " 2>/dev/null | tail -1)
   case "$r" in
-    "investigador defensor") ok "el router lee las dos tarjetas" ;;
-    *) mal "el router no las lee todas: $r" ;;
+    "investigador defensor") ok "el orquestador lee las dos tarjetas" ;;
+    *) mal "el orquestador no las lee todas: $r" ;;
   esac
 fi
 

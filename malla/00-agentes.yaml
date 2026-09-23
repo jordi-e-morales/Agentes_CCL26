@@ -172,9 +172,9 @@ spec:
   ports:
     - {port: 7010, targetPort: 7010}
 
-# ─── Router por tarea ────────────────────────────────────────────────────────
+# ─── Orquestador por tarea ────────────────────────────────────────────────────────
 # Salio del proceso de la interfaz el 2026-09-23. El motivo esta en
-# malla/servidor_router.py, y en una linea: dentro de la interfaz sus llamadas a
+# malla/servidor_orquestador.py, y en una linea: dentro de la interfaz sus llamadas a
 # los agentes no atravesaban el cluster, asi que Hubble no podia dibujar la
 # flecha que pone la malla en marcha y Cilium no podia gobernarla.
 #
@@ -182,7 +182,7 @@ spec:
 # router "es un agente mas", y esto lo hace verdad para la politica: hereda el
 # veto de `exec` de Tetragon y las reglas de salida de los agentes. Lo unico que
 # necesita ademas es LEER las tarjetas de los otros, y eso se le concede en
-# seguridad/cilium-l7.yaml con una politica aparte que selecciona `app: router`.
+# seguridad/cilium-l7.yaml con una politica aparte que selecciona `app: orquestador`.
 #
 # Efecto secundario que conviene saber: al compartir etiqueta, tambien hereda el
 # permiso de hablar con el servidor MCP, que el router no usa. Es el precio de
@@ -192,24 +192,24 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: router
+  name: orquestador
   namespace: agentes
 spec:
   replicas: 1
   selector:
-    matchLabels: {app: router}
+    matchLabels: {app: orquestador}
   template:
     metadata:
-      labels: {app: router, rol: agente}
+      labels: {app: orquestador, rol: agente}
     spec:
       automountServiceAccountToken: false
       containers:
-        - name: router
+        - name: orquestador
           image: ccl26/agentes:dev
           imagePullPolicy: Never
           # command reemplaza al ENTRYPOINT de la imagen: misma imagen, otro
           # programa. Sin esto arrancaria un agente.
-          command: ["python", "/app/malla/servidor_router.py", "--puerto", "7012"]
+          command: ["python", "/app/malla/servidor_orquestador.py", "--puerto", "7012"]
           envFrom:
             - configMapRef: {name: endpoints}
           ports:
@@ -234,10 +234,10 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: router
+  name: orquestador
   namespace: agentes
 spec:
-  selector: {app: router}
+  selector: {app: orquestador}
   ports:
     - {port: 7012, targetPort: 7012}
 

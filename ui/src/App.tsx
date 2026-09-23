@@ -60,6 +60,7 @@ const CASOS = [
 const SEGMENTOS = [
   {
     n: 1, titulo: "Un agente no es un modelo",
+    // `cierra` no se pinta: es el guion del arco (§2), aqui por referencia.
     cierra: "¿Cómo se encuentran?",
     ve: [] as string[],
   },
@@ -71,7 +72,12 @@ const SEGMENTOS = [
   {
     n: 3, titulo: "Se hablan",
     cierra: "¿De dónde sacan los datos?",
-    ve: ["paso", "sobre", "salto", "argumento", "esperando", "sintesis", "error"],
+    // Incluye `agente` y `eleccion` aunque el 2 tambien los tenga, y no es
+    // duplicado por descuido: el 3 cuenta la secuencia ENTERA -descubrir,
+    // elegir, despachar, hablarse- y sin los dos primeros los pasos 1 y 2
+    // aparecian como titulos vacios. El 2 es el primer plano; el 3, la pelicula.
+    ve: ["agente", "eleccion", "paso", "sobre", "salto", "argumento",
+         "esperando", "sintesis", "error"],
   },
   {
     n: 4, titulo: "Herramientas por MCP",
@@ -195,21 +201,17 @@ export default function App() {
           )}
         </div>
 
-        {/* EL TITULO DEL SEGMENTO, con la pregunta que lo cierra.
-            Esa pregunta es el guion: es lo que enlaza con el siguiente. Tenerla
-            en pantalla evita depender de acordarse en vivo. */}
+        {/* EL TITULO DEL SEGMENTO, y nada mas.
+            Aqui estuvo la pregunta con la que cierra cada segmento, y se quito:
+            eso es guion del presentador, no contenido para la sala. Lo que se
+            proyecta es lo que el publico necesita ver. */}
         {segmento > 0 && (() => {
           const sg = SEGMENTOS.find((x) => x.n === segmento)!;
           return (
-            <div style={{ margin: "18px 0 14px" }}>
-              <h2 style={{ margin: 0, fontSize: 22 }}>
-                <span className="tenue" style={{ marginRight: 10 }}>{sg.n}</span>
-                {sg.titulo}
-              </h2>
-              <p className="suave" style={{ margin: "4px 0 0", fontSize: "var(--texto-chico)" }}>
-                termina con: <strong>{sg.cierra}</strong>
-              </p>
-            </div>
+            <h2 style={{ margin: "18px 0 14px", fontSize: 22 }}>
+              <span className="tenue" style={{ marginRight: 10 }}>{sg.n}</span>
+              {sg.titulo}
+            </h2>
           );
         })()}
 
@@ -486,10 +488,10 @@ function Prompts() {
       <div style={{ fontWeight: 600 }}>
         Identidad de los Agentes
         <Info>
-          Los dos agentes corren sobre los mismos pesos, en el mismo proceso y
-          en la misma GPU. No hay dos modelos. Lo que separa al que acusa del
-          que defiende cabe en estos dos párrafos — y en su identidad y sus
-          permisos, que gobiernan Cilium y Tetragon.
+          Los tres corren sobre los mismos pesos, en la misma GPU, y salen de
+          la misma imagen. No hay tres modelos. Lo que los separa cabe en su
+          prompt y en lo que pueden tocar: el orquestador resume y no llega a
+          ninguna herramienta; los otros dos llegan a las seis.
         </Info>
       </div>
       {datos.length === 0 && <p className="tenue" style={{ fontSize: 13 }}>cargando…</p>}
@@ -514,6 +516,61 @@ function Prompts() {
               <p className="tenue" style={{ fontSize: 12, margin: "4px 0 0" }}>
                 solo lectura
               </p>
+
+              {/* LAS HERRAMIENTAS A LAS QUE LLEGA.
+                  Es la otra mitad de "que hace distinto a un agente": no solo
+                  el prompt, tambien lo que puede tocar. El orquestador corre
+                  sobre el mismo modelo y esta lista le sale vacia. */}
+              <div style={{ marginTop: 10 }}>
+                <div className="tenue" style={{ fontSize: 12, marginBottom: 4 }}>
+                  herramientas a las que llega
+                </div>
+
+                {d.nota && (
+                  <p className="suave" style={{
+                    fontSize: "var(--texto-chico)", margin: "0 0 6px",
+                    borderLeft: "3px solid var(--cisco-cian)", paddingLeft: 10,
+                  }}>
+                    {d.nota}
+                  </p>
+                )}
+
+                {d.herramientas_fallo && (
+                  <p className="tenue" style={{ fontSize: 12, margin: 0 }}>
+                    {d.herramientas_fallo}
+                  </p>
+                )}
+
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                  {(d.herramientas ?? []).map((h: any) => (
+                    <span
+                      key={h.nombre}
+                      title={h.descripcion}
+                      style={{
+                        fontFamily: "var(--fuente-mono)", fontSize: 12,
+                        padding: "3px 8px", borderRadius: 5,
+                        // Las dos que ACTUAN se marcan solas. Regla 3: la
+                        // diferencia se resalta, no se deja buscar.
+                        background: h.actua ? "#2A0F12" : "var(--fondo)",
+                        border: `1px solid ${h.actua ? "var(--bloqueo)" : "var(--borde)"}`,
+                        color: h.actua ? "var(--bloqueo)" : "var(--texto-suave)",
+                        fontWeight: h.actua ? 700 : 400,
+                      }}
+                    >
+                      {h.nombre}
+                    </span>
+                  ))}
+                </div>
+
+                {(d.herramientas ?? []).some((h: any) => h.actua) && (
+                  <p className="tenue" style={{ fontSize: 12, margin: "8px 0 0" }}>
+                    En rojo, las que <strong>actúan</strong>: una cierra el caso,
+                    la otra ejecuta un proceso. La política de red no puede
+                    concederle unas y negarle otras — las seis viajan por
+                    el mismo <code>POST /mcp</code>.
+                  </p>
+                )}
+              </div>
             </>
           )}
         </div>

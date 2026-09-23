@@ -22,7 +22,7 @@ Eso dice qué falta en cualquier momento. Si algo va mal, empieza por ahí.
 | 4 | PostgreSQL | Pod | No |
 | 5 | Servidor MCP | Pod | No |
 | 6 | Collector de OTel | Pod | No |
-| 7 | **Router por tarea** | **Pod** | No |
+| 7 | **Orquestador por tarea** | **Pod** | No |
 | 8 | **Agente investigador** | **Pod** | No |
 | 9 | **Agente defensor** | **Pod** | No |
 | 10 | Los dos `port-forward` | Host | **Sí** |
@@ -32,7 +32,7 @@ Eso dice qué falta en cualquier momento. Si algo va mal, empieza por ahí.
 **Tres terminales** se quedan abiertas. Lo demás vive en el cluster o en Docker
 y sobrevive a que cierres la sesión.
 
-Los agentes y el router pasaron de host a pods el 2026-09-23, y es el cambio que
+Los agentes y el orquestador pasaron de host a pods el 2026-09-23, y es el cambio que
 hace enseñables los segmentos 3 y 6: sólo como pods sus aristas existen para
 Cilium y para Hubble.
 
@@ -41,7 +41,7 @@ de `nvidia-smi` para el panel de GPU y de `kubectl` contra Tetragon y el
 Collector para los de kernel y cascada. Moverla al cluster rompería el primero y
 exigiría darle permiso para ejecutar comandos dentro de `kube-system`, en una
 sesión cuyo segmento 6 trata de mínimo privilegio. El reparto que queda es el
-que el §3 ya describía: **el router es un agente** y su sitio es la malla; **la
+que el §3 ya describía: **el orquestador es un agente** y su sitio es la malla; **la
 interfaz es la ventana del presentador** y su sitio es el host.
 
 ---
@@ -165,10 +165,10 @@ Dos cosas que hacen parecer que está roto y no lo está:
 
 ---
 
-## El router y los agentes son pods
+## El orquestador y los agentes son pods
 
 **Esto cambió el 2026-09-23 y es importante.** Antes los agentes corrían como
-procesos en el host con `python malla/agente.py`, y el router vivía *dentro* del
+procesos en el host con `python malla/agente.py`, y el orquestador vivía *dentro* del
 proceso de la interfaz. Ya no: son tres Deployments que salen de **una sola
 imagen**.
 
@@ -194,7 +194,7 @@ Cada cambio en `malla/agente.py` pide volver a correrlo. Si sólo cambias una
 variable del ConfigMap (`RONDAS_DEBATE`, por ejemplo), basta:
 
 ```bash
-kubectl apply -f malla/00-agentes.yaml && kubectl -n agentes rollout restart deploy/router deploy/investigador deploy/defensor
+kubectl apply -f malla/00-agentes.yaml && kubectl -n agentes rollout restart deploy/orquestador deploy/investigador deploy/defensor
 ```
 
 ---
@@ -205,11 +205,11 @@ Estas sí hay que dejarlas abiertas, cada una en su ventana.
 
 **Terminal 1 — los puentes**
 
-La interfaz corre en el host y ahora **sólo habla con el router**. A los agentes
-les habla el router, desde dentro del cluster:
+La interfaz corre en el host y ahora **sólo habla con el orquestador**. A los agentes
+les habla el orquestador, desde dentro del cluster:
 
 ```bash
-kubectl -n agentes port-forward deploy/router 7012:7012 & kubectl -n agentes port-forward deploy/servidor-mcp 9000:9000
+kubectl -n agentes port-forward deploy/orquestador 7012:7012 & kubectl -n agentes port-forward deploy/servidor-mcp 9000:9000
 ```
 
 El del servidor MCP se queda para poder probar herramientas a mano desde el
@@ -240,7 +240,7 @@ Con los agentes en el host había que arrancarlos con
 en el ConfigMap `endpoints` apuntando a `http://otel-collector:4318`, que es DNS
 del cluster: **los pods exportan solos y sin port-forward.**
 
-### Ver lo que dice un agente, o el router
+### Ver lo que dice un agente, o el orquestador
 
 Los sobres A2A se siguen imprimiendo; ahora salen por los logs del pod:
 
@@ -249,7 +249,7 @@ Los sobres A2A se siguen imprimiendo; ahora salen por los logs del pod:
 ```
 
 ```bash
-./malla/agentes-up.sh --logs router
+./malla/agentes-up.sh --logs orquestador
 ```
 
 ### Comprobar que la imagen no se quedó atrás
@@ -258,7 +258,7 @@ Los sobres A2A se siguen imprimiendo; ahora salen por los logs del pod:
 curl -s http://localhost:8080/api/salud
 ```
 
-Devuelve `version_flujo` (lo que hay en disco) y `version_router` (lo que el pod
+Devuelve `version_flujo` (lo que hay en disco) y `version_orquestador` (lo que el pod
 está corriendo). **Si `al_dia` es `false`, la imagen es vieja:**
 `./malla/agentes-up.sh`. Este desfase ya mordió tres veces y nunca da un error —
 da resultados viejos, que es peor.

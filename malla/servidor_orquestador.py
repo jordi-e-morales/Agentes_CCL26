@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""El router por tarea, como servicio. Corre en su propio pod.
+"""El orquestador por tarea, como servicio. Corre en su propio pod.
 
 POR QUE SALIO DE LA INTERFAZ
 ----------------------------
@@ -30,7 +30,7 @@ Asi que la interfaz se queda donde estaba y hace de proxy del SSE. La logica no
 se duplico: flujo.py es el mismo archivo, solo cambio quien lo ejecuta.
 
 Uso:
-    python malla/servidor_router.py            (puerto 7012)
+    python malla/servidor_orquestador.py            (puerto 7012)
 """
 
 import argparse
@@ -59,13 +59,13 @@ def version_del_codigo() -> str:
     reconstruir la imagen produce el mismo sintoma.
     """
     h = hashlib.sha256()
-    for f in ("malla/flujo.py", "malla/servidor_router.py"):
+    for f in ("malla/flujo.py", "malla/servidor_orquestador.py"):
         h.update((RAIZ / f).read_bytes())
     return h.hexdigest()[:12]
 
 
 async def salud(_req):
-    return JSONResponse({"ok": True, "rol": "router",
+    return JSONResponse({"ok": True, "rol": "orquestador",
                          "version_codigo": version_del_codigo()})
 
 
@@ -77,7 +77,7 @@ async def tarjeta(_req):
     sin tarjeta.
     """
     return JSONResponse(json.loads(
-        (RAIZ / "malla" / "tarjetas" / "router.json").read_text(encoding="utf-8")))
+        (RAIZ / "malla" / "tarjetas" / "orquestador.json").read_text(encoding="utf-8")))
 
 
 async def agentes(_req):
@@ -133,12 +133,12 @@ def construir():
 
 
 def main():
-    p = argparse.ArgumentParser(description="El router por tarea, como servicio")
+    p = argparse.ArgumentParser(description="El orquestador por tarea, como servicio")
     p.add_argument("--puerto", type=int, default=7012)
     a = p.parse_args()
 
     import uvicorn
-    print(f"Router en http://0.0.0.0:{a.puerto}  (codigo {version_del_codigo()})")
+    print(f"Orquestador en http://0.0.0.0:{a.puerto}  (codigo {version_del_codigo()})")
     print(f"  tarjeta:   /.well-known/agent-card.json")
     print(f"  descubrir: GET  /agentes")
     print(f"  deliberar: POST /deliberar   (SSE)")
