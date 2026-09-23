@@ -31,12 +31,30 @@ log "Instalando Cilium como red del cluster"
 #         mandar un byte (medido: 345 s el Arbitro), asi que se sube a 30 min.
 #         En GPU sobra, pero no estorba.
 IDLE_ENVOY=1800
+# hubble.eventBufferCapacity: cuanta HISTORIA de trafico guarda cada nodo.
+#
+#         El default son 4095 flujos por nodo. Medido el 2026-09-23 en este
+#         cluster: 50 flujos/s y el buffer al 100%, o sea ~164 segundos de
+#         historia antes de que empiece a tirar lo viejo.
+#
+#         Eso alcanza para la deliberacion (~41 s) pero NO para narrarla
+#         despues: a los tres minutos los flujos que quieres enseñar ya no
+#         existen. Y una demo en la que el panel se vacia solo mientras hablas
+#         es peor que no tenerlo.
+#
+#         65535 da mas de 20 minutos al mismo ritmo. Son flujos en memoria del
+#         agente, unas decenas de MB: barato comparado con perder el segmento.
+#
+#         El valor TIENE que ser una potencia de dos menos uno. Cilium rechaza
+#         cualquier otro, y el error no dice por que.
+BUFFER_HUBBLE=65535
 if ! cilium status >/dev/null 2>&1; then
   cilium install \
     --set kubeProxyReplacement=true \
     --set hubble.enabled=true \
     --set hubble.relay.enabled=true \
     --set hubble.ui.enabled=true \
+    --set hubble.eventBufferCapacity=$BUFFER_HUBBLE \
     --set envoy.streamIdleTimeoutDurationSeconds=$IDLE_ENVOY
 else
   echo "Cilium ya estaba instalado"
@@ -47,6 +65,20 @@ else
   if [ "$actual" != "$IDLE_ENVOY" ]; then
     echo "Ajustando http-stream-idle-timeout de ${actual:-?} a $IDLE_ENVOY"
     cilium config set http-stream-idle-timeout "$IDLE_ENVOY"
+  fi
+  # Lo mismo para el buffer de Hubble, en clusters creados antes de fijarlo.
+  #
+  # Va con `|| true` y comprobando que la clave exista: este script es camino
+  # critico y no puede caerse por un ajuste de observabilidad. Si el nombre de
+  # la clave cambia en una version futura de Cilium, se avisa y se sigue.
+  buf=$(kubectl -n kube-system get configmap cilium-config \
+    -o jsonpath='{.data.hubble-event-buffer-capacity}' 2>/dev/null || true)
+  if [ -z "$buf" ]; then
+    echo "  (no encuentro hubble-event-buffer-capacity; se queda el default)"
+  elif [ "$buf" != "$BUFFER_HUBBLE" ]; then
+    echo "Ajustando hubble-event-buffer-capacity de $buf a $BUFFER_HUBBLE"
+    cilium config set hubble-event-buffer-capacity "$BUFFER_HUBBLE" || \
+      echo "  (no se pudo; se queda en $buf)"
   fi
 fi
 
