@@ -8,8 +8,18 @@
 # externa, no el unico sitio donde mirar (§9).
 #
 # Uso:
-#   ./observabilidad/splunk-up.sh us1        <- tu realm
+#   ./observabilidad/splunk-up.sh https://ingest.us1.observability.splunkcloud.com
 #   ./observabilidad/splunk-up.sh --down     <- lo quita y deja todo como estaba
+#
+# EL ENDPOINT SE PASA ENTERO, NO SE DEDUCE DEL REALM.
+# Hay dos dominios en circulacion y no se puede adivinar cual te toca:
+#
+#   ingest.<realm>.signalfx.com                      (organizaciones antiguas)
+#   ingest.<realm>.observability.splunkcloud.com     (las nuevas)
+#
+# El tuyo esta escrito en tu pagina de perfil de Splunk, como "Real-time Data
+# Ingest Endpoint". Copialo de ahi. La regla de honestidad del §6 dice que no
+# inventemos endpoints, y este script no lo hace.
 #
 # El token se pide por teclado y no se escribe en disco ni en el historial.
 
@@ -28,14 +38,31 @@ if [ "${1:-}" = "--down" ]; then
   exit 0
 fi
 
-REALM="${1:-}"
-if [ -z "$REALM" ]; then
-  echo "Falta el realm. Es el que sale en la URL de tu Splunk Observability:"
-  echo "    https://app.us1.signalfx.com  ->  el realm es  us1"
+INGESTA="${1:-}"
+if [ -z "$INGESTA" ]; then
+  echo "Falta el endpoint de ingesta."
   echo ""
-  echo "  ./observabilidad/splunk-up.sh us1"
+  echo "Esta en tu pagina de perfil de Splunk Observability, como"
+  echo "\"Real-time Data Ingest Endpoint\". Algo asi:"
+  echo "    https://ingest.us1.observability.splunkcloud.com"
+  echo ""
+  echo "  ./observabilidad/splunk-up.sh https://ingest.us1.observability.splunkcloud.com"
   exit 1
 fi
+case "$INGESTA" in
+  http://*|https://*) ;;
+  *)
+    echo "Eso parece un realm, no un endpoint."
+    echo ""
+    echo "Hay dos dominios en circulacion y este script no adivina cual es el"
+    echo "tuyo. Copia el \"Real-time Data Ingest Endpoint\" de tu perfil:"
+    echo "    https://ingest.$INGESTA.observability.splunkcloud.com   (nuevas)"
+    echo "    https://ingest.$INGESTA.signalfx.com                    (antiguas)"
+    exit 1 ;;
+esac
+# Sin barra final: luego se le pega la ruta.
+INGESTA="${INGESTA%/}"
+TRAZAS_URL="$INGESTA/v2/trace/otlp"
 
 kubectl get nodes >/dev/null 2>&1 || {
   echo "El cluster no responde: corre ./lab/cluster-up.sh"; exit 1; }
@@ -49,8 +76,6 @@ if [ -z "${SPLUNK_TOKEN:-}" ]; then
   echo ""
 fi
 [ -z "$SPLUNK_TOKEN" ] && { echo "Sin token no hay nada que hacer."; exit 1; }
-
-INGESTA="https://ingest.${REALM}.signalfx.com"
 
 log "Comprobando que el CLUSTER alcanza $INGESTA"
 # Desde un POD, no desde el host. Es la misma trampa que con vLLM: el host casi
@@ -72,12 +97,13 @@ kubectl -n "$NS" create secret generic splunk \
 echo "  ok  secret/splunk  (no queda en el repo)"
 
 log "Añadiendo el exportador al Collector"
+echo "  trazas -> $TRAZAS_URL"
 # Se edita el manifiesto EN MEMORIA y se aplica; el archivo del repo no se toca,
 # asi que no hay riesgo de commitear una configuracion con el realm de alguien.
 TMP="$(mktemp)"
-python3 - "$MANIFIESTO" "$REALM" > "$TMP" <<'PY'
+python3 - "$MANIFIESTO" "$TRAZAS_URL" > "$TMP" <<'PY'
 import io, sys
-manif, realm = sys.argv[1], sys.argv[2]
+manif, trazas_url = sys.argv[1], sys.argv[2]
 s = io.open(manif, encoding="utf-8").read()
 
 # 1. Descomentar el bloque del exportador, con el realm sustituido.
@@ -88,7 +114,7 @@ viejo = """      # Splunk Observability Cloud (necesita internet y un token de i
       #     X-SF-Token: ${env:SPLUNK_ACCESS_TOKEN}"""
 nuevo = f"""      # Splunk Observability Cloud. Lo pone observabilidad/splunk-up.sh.
       otlphttp/splunk:
-        traces_endpoint: https://ingest.{realm}.signalfx.com/v2/trace/otlp
+        traces_endpoint: {trazas_url}
         headers:
           X-SF-Token: ${{env:SPLUNK_ACCESS_TOKEN}}"""
 if viejo not in s:

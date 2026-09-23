@@ -266,12 +266,21 @@ da resultados viejos, que es peor.
 ### 8. Splunk Observability (opcional)
 
 ```bash
-./observabilidad/splunk-up.sh us1
+./observabilidad/splunk-up.sh https://ingest.us1.observability.splunkcloud.com
 ```
 
-El argumento es tu *realm* — el que sale en la URL de tu Splunk
-(`https://app.**us1**.signalfx.com`). Pide el token por teclado, lo guarda como
-Secret, y no toca el archivo del repo.
+El argumento es el **Real-time Data Ingest Endpoint**, tal cual aparece en tu
+página de perfil de Splunk Observability. Se pasa entero y no se deduce del
+realm, porque hay **dos dominios en circulación** y no se puede adivinar cuál te
+toca:
+
+| | |
+|---|---|
+| `ingest.<realm>.observability.splunkcloud.com` | organizaciones nuevas |
+| `ingest.<realm>.signalfx.com` | las antiguas |
+
+Pide el token por teclado —nunca por argumento, que se ve en `ps`— lo guarda
+como Secret, y no toca el archivo del repo.
 
 **No puede romper nada.** El exportador `file` se queda puesto, así que la
 cascada del segmento 5 se dibuja igual sin internet y sin credenciales. Splunk
