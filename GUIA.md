@@ -299,8 +299,16 @@ bash lab/estado.sh
 Y las pruebas de cada capa, que además son demostrables por separado:
 
 ```bash
-.venv/bin/python malla/router.py --solo-descubrir
+curl -s http://localhost:7012/agentes | jq '.[] | {clave, vivo, peticion}'
 ```
+
+Ése es el descubrimiento **de verdad**: lo hace el orquestador, desde dentro del
+cluster, leyendo las Agent Cards por HTTP. Es exactamente lo que alimenta el
+segmento 2 de la interfaz.
+
+*(`malla/router.py` es un CLI anterior que habla a `localhost:7010`. Desde que
+los agentes son pods ya no alcanza nada sin puentes que hoy no levantamos. Se
+conserva por si hiciera falta depurar el descubrimiento fuera del cluster.)*
 
 ```bash
 bash seguridad/probar-lista-blanca.sh

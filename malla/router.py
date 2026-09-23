@@ -1,5 +1,20 @@
 #!/usr/bin/env python3
-"""El router por tarea: descubre quien puede hacer el trabajo y se lo manda.
+"""CLI de depuracion del descubrimiento. NO es lo que corre en la demo.
+
+OJO ANTES DE USARLO
+-------------------
+Desde que los agentes son pods (2026-09-23) esto habla a localhost:7010 y no
+alcanza nada, salvo que levantes los puentes a mano. El descubrimiento que la
+sesion enseña lo hace el ORQUESTADOR desde dentro del cluster:
+
+    curl -s http://localhost:7012/agentes | jq
+
+Se conserva porque sigue siendo util para depurar el descubrimiento sin
+cluster de por medio, con URL_INVESTIGADOR y URL_DEFENSOR apuntando a donde sea.
+
+Lo que sigue describe la logica, que es la misma que hay en malla/flujo.py.
+
+El router por tarea: descubre quien puede hacer el trabajo y se lo manda.
 
 NO ES EL CENTRO DE LA RED, ES EL CENTRO DE LA LOGICA
 -----------------------------------------------------
