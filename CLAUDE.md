@@ -645,15 +645,28 @@ propio plan ya había decidido de antemano qué sobrevive.
 | F | Tokens en pantalla | **Hecho**, por tarea y en la interfaz |
 | — | **La interfaz** (no estaba en el plan; debió estarlo) | **Hecha** (`ui/`) |
 | G | Trazas: propagación, Collector y cascada | **Hecho y probado** (`observabilidad/`) |
-| H | **Best effort:** Splunk, AI Defense | Pendiente, depende de la red |
+| H | **Best effort:** Splunk, AI Defense | **Splunk hecho** (2026-09-23). AI Defense pendiente |
 
-### Lo que falta, al 2026-09-21
+### Lo que falta, al 2026-09-23
 
 | | Qué | Por qué importa |
 |---|---|---|
-| 1 | **Que el ataque llegue a la acción** | La inyección ya domina el razonamiento de los dos agentes, pero todavía no provoca la llamada a `exporta_evidencia` con algo fuera de la lista blanca. Sin eso, el SIGKILL y el 403 no se encadenan con el resto |
-| 2 | **La migración** | El orden de `GUIA.md` es el procedimiento; falta hacerlo de verdad |
-| 3 | Splunk y AI Defense | Best effort. La cascada ya no depende de ellos: se dibuja desde el archivo del Collector, sin internet |
+| 1 | **Que el ataque llegue a la acción** | La inyección domina el razonamiento de los dos agentes **y de la síntesis**, pero la disposición sigue ordenándola el orquestador. Cambia lo que concluyen, no lo que pueden hacer |
+| 2 | **La migración** | El orden de `GUIA.md` es el procedimiento; falta hacerlo de verdad. Los dos labs corren en paralelo, así que se puede comparar contra uno que funciona |
+| 3 | AI Defense | Lo único que queda de la fase H. Depende de la red |
+| 4 | Limpiar los duplicados del §6 | Hay dos versiones **contradictorias** de por qué los agentes se inventaban la evidencia. Una manda a buscar en la dirección equivocada |
+
+**Splunk: hecho el 2026-09-23.** Las trazas llegan a Splunk Observability Cloud
+por OTLP, con `observabilidad/splunk-up.sh`. Costó cuatro causas encadenadas y
+todas daban el mismo `401`: un token de API en vez de uno de ingesta, el dominio
+`signalfx.com` en vez de `observability.splunkcloud.com`, un `wget` de busybox
+sin TLS que daba falsa alarma de red, y —la que más costó— que **recrear un
+Secret no cambia la variable de entorno de un pod que ya corre**, y
+`kubectl set env` solo reinicia si el Deployment cambia. El script ahora fuerza
+`rollout restart` siempre.
+
+La cascada del segmento 5 **sigue sin depender de Splunk**: se dibuja del archivo
+del Collector. Esto es validación externa, como decidió el §12.
 
 ### Lo que falta para que los segmentos 4 y 6 sean enseñables
 
