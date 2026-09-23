@@ -263,6 +263,26 @@ está corriendo). **Si `al_dia` es `false`, la imagen es vieja:**
 `./malla/agentes-up.sh`. Este desfase ya mordió tres veces y nunca da un error —
 da resultados viejos, que es peor.
 
+### 8. Splunk Observability (opcional)
+
+```bash
+./observabilidad/splunk-up.sh us1
+```
+
+El argumento es tu *realm* — el que sale en la URL de tu Splunk
+(`https://app.**us1**.signalfx.com`). Pide el token por teclado, lo guarda como
+Secret, y no toca el archivo del repo.
+
+**No puede romper nada.** El exportador `file` se queda puesto, así que la
+cascada del segmento 5 se dibuja igual sin internet y sin credenciales. Splunk
+es validación externa, no el único sitio donde mirar.
+
+Para quitarlo: `./observabilidad/splunk-up.sh --down`
+
+En Splunk los servicios aparecen como `orquestador`, `agente-investigador` y
+`agente-defensor`. Los spans llevan los atributos `gen_ai.*`, así que deberían
+reconocerse como de GenAI sin configurar nada.
+
 ---
 
 ## Qué reiniciar cuando cambia algo
