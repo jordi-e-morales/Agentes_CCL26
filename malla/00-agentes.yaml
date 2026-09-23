@@ -172,6 +172,75 @@ spec:
   ports:
     - {port: 7010, targetPort: 7010}
 
+# ─── Router por tarea ────────────────────────────────────────────────────────
+# Salio del proceso de la interfaz el 2026-09-23. El motivo esta en
+# malla/servidor_router.py, y en una linea: dentro de la interfaz sus llamadas a
+# los agentes no atravesaban el cluster, asi que Hubble no podia dibujar la
+# flecha que pone la malla en marcha y Cilium no podia gobernarla.
+#
+# Lleva `rol: agente` A PROPOSITO, y no una etiqueta propia. El §3 dice que el
+# router "es un agente mas", y esto lo hace verdad para la politica: hereda el
+# veto de `exec` de Tetragon y las reglas de salida de los agentes. Lo unico que
+# necesita ademas es LEER las tarjetas de los otros, y eso se le concede en
+# seguridad/cilium-l7.yaml con una politica aparte que selecciona `app: router`.
+#
+# Efecto secundario que conviene saber: al compartir etiqueta, tambien hereda el
+# permiso de hablar con el servidor MCP, que el router no usa. Es el precio de
+# una politica basada en etiquetas, y es honesto decirlo en vez de fingir que la
+# granularidad sale gratis.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: router
+  namespace: agentes
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: router}
+  template:
+    metadata:
+      labels: {app: router, rol: agente}
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: router
+          image: ccl26/agentes:dev
+          imagePullPolicy: Never
+          # command reemplaza al ENTRYPOINT de la imagen: misma imagen, otro
+          # programa. Sin esto arrancaria un agente.
+          command: ["python", "/app/malla/servidor_router.py", "--puerto", "7012"]
+          envFrom:
+            - configMapRef: {name: endpoints}
+          ports:
+            - {containerPort: 7012, name: http}
+          readinessProbe:
+            httpGet: {path: /salud, port: 7012}
+            periodSeconds: 5
+          resources:
+            requests: {cpu: 50m, memory: 128Mi}
+            limits: {memory: 512Mi}
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+          volumeMounts:
+            - {name: temporal, mountPath: /tmp}
+      volumes:
+        - name: temporal
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: router
+  namespace: agentes
+spec:
+  selector: {app: router}
+  ports:
+    - {port: 7012, targetPort: 7012}
+
 # ─── vLLM, que corre en el HOST ──────────────────────────────────────────────
 # Service SIN selector: no hay pod detras. Sus Endpoints los escribe
 # lab/publica-vllm.sh con la IP del host, porque esa IP cambia cada vez que se

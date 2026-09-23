@@ -48,9 +48,12 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # Las tarjetas van dentro porque el agente las sirve en
 # /.well-known/agent-card.json, y el descubrimiento del segmento 2 es
 # literalmente un GET a esa ruta. Si faltaran, el segmento se queda sin objeto.
-COPY malla/agente.py        /app/malla/agente.py
-COPY malla/tarjetas/        /app/malla/tarjetas/
-COPY observabilidad/        /app/observabilidad/
+COPY malla/__init__.py         /app/malla/__init__.py
+COPY malla/agente.py          /app/malla/agente.py
+COPY malla/flujo.py           /app/malla/flujo.py
+COPY malla/servidor_router.py /app/malla/servidor_router.py
+COPY malla/tarjetas/          /app/malla/tarjetas/
+COPY observabilidad/          /app/observabilidad/
 
 # Que `from observabilidad import trazas` funcione, y que RAIZ apunte a /app.
 ENV PYTHONPATH=/app
@@ -63,6 +66,10 @@ RUN useradd --create-home --uid 10001 agente
 USER 10001
 
 # El rol se pasa en el manifiesto, que es lo que hace que una sola imagen sirva
-# para los dos. Es el insight #1 de la sesion hecho despliegue: mismo codigo,
+# para los TRES. Es el insight #1 de la sesion hecho despliegue: mismo codigo,
 # mismos pesos, identidades distintas.
+#
+# Los dos agentes usan este ENTRYPOINT con `args: ["--rol", "..."]`.
+# El router lo reemplaza con `command:` porque arranca otro programa
+# (servidor_router.py), pero sale de la misma imagen.
 ENTRYPOINT ["python", "/app/malla/agente.py", "--puerto", "7010"]

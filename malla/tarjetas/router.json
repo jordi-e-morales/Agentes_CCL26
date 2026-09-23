@@ -1,0 +1,34 @@
+{
+  "name": "router-tareas",
+  "description": "Clasifica la tarea, lee las Agent Cards de los demas y despacha al que declara la habilidad que hace falta. Despues sintetiza lo que dijeron. No tiene herramientas.",
+  "version": "1.0.0",
+  "supportedInterfaces": [
+    {
+      "protocolBinding": "JSONRPC",
+      "protocolVersion": "0.3.0",
+      "url": "http://router.agentes.svc.cluster.local:7012/deliberar"
+    }
+  ],
+  "defaultInputModes": [
+    "text/plain"
+  ],
+  "defaultOutputModes": [
+    "text/plain"
+  ],
+  "capabilities": {
+    "streaming": true,
+    "pushNotifications": false
+  },
+  "skills": [
+    {
+      "id": "despachar-triage",
+      "name": "Despachar y sintetizar",
+      "description": "Descubre agentes por su tarjeta, elige por `tags`, despacha por A2A y resume la deliberacion.",
+      "tags": [
+        "orquestacion",
+        "descubrimiento",
+        "sintesis"
+      ]
+    }
+  ]
+}

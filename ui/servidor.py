@@ -31,6 +31,7 @@ import argparse
 import asyncio
 import hashlib
 import json
+import os
 import pathlib
 import sys
 
@@ -42,31 +43,81 @@ from starlette.staticfiles import StaticFiles
 
 RAIZ = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RAIZ))
-from malla import flujo  # noqa: E402
 
 DIST = pathlib.Path(__file__).parent / "dist"
 
+# ---------------------------------------------------------------------------
+# EL ROUTER YA NO CORRE AQUI.
+#
+# Hasta el 2026-09-23 este archivo importaba malla/flujo.py y ejecutaba la
+# deliberacion en su propio proceso. Ahora el router es un pod, y esta interfaz
+# le hace de proxy.
+#
+# El motivo es de red, no de arquitectura por gusto: desde el host, las llamadas
+# del router a los agentes no atravesaban el cluster, asi que Hubble no podia
+# dibujar la flecha que pone la malla en marcha y Cilium no podia gobernar
+# router -> agente. El §3 dice que el router "es un agente mas"; como pod eso ya
+# es cierto tambien para la politica.
+#
+# Y LA INTERFAZ SE QUEDO EN EL HOST a proposito. Depende de cuatro cosas que un
+# pod no tiene a mano: nvidia-smi (el panel de GPU), y kubectl contra Tetragon y
+# el Collector (kernel y cascada), ademas de la CLI de hubble. Moverla habria
+# roto el panel de GPU y habria exigido darle permiso para ejecutar comandos
+# dentro de pods de kube-system, en una sesion cuyo segmento 6 trata justamente
+# de minimo privilegio.
+#
+# El reparto que queda es el que el §3 ya describia:
+#   el router es un AGENTE          -> su sitio es la malla
+#   la interfaz es la VENTANA       -> su sitio es el host
+# ---------------------------------------------------------------------------
+URL_ROUTER = os.getenv("URL_ROUTER", "http://localhost:7012")
+
 
 async def deliberar(req):
-    """Transmite la deliberacion segun ocurre, por Server-Sent Events.
+    """Reenvia, tal cual, el SSE que el router va emitiendo.
 
-    Se transmite en vivo y no se devuelve al final a proposito: el valor
-    didactico esta en VER la secuencia -descubrir, elegir, despachar, recoger
-    evidencia, saltar al vecino- y no en el resultado. Un volcado final
-    convierte un proceso en un parrafo.
+    SE REENVIA LINEA A LINEA, sin acumular. Una deliberacion tarda ~41 segundos
+    y el §12 dice que "la espera es la demo": la sala ve aparecer el
+    descubrimiento, la eleccion, el sobre A2A, cada herramienta con su respuesta
+    y el salto lateral. Juntar todo para entregarlo al final convertiria eso en
+    41 segundos de pantalla quieta, que es el unico modo de que la regla de
+    abandono se dispare.
     """
     alerta = req.query_params.get("alerta", "ALR-FICTICIA-0001")
     sujeto = req.query_params.get("sujeto", "SUJ-0001")
     busca = req.query_params.get("busca", "riesgo")
 
     async def eventos():
+        import httpx
+        cuerpo = {"alerta": alerta, "sujeto": sujeto, "busca": busca}
         try:
-            async for evento in flujo.deliberar(alerta, sujeto, busca):
-                yield f"data: {json.dumps(evento, ensure_ascii=False)}\n\n"
+            # timeout=None en la lectura: la deliberacion tarda lo que tarda, y
+            # un limite aqui cortaria la transmision a mitad de un debate.
+            limites = httpx.Timeout(10.0, read=None)
+            async with httpx.AsyncClient(timeout=limites) as cli:
+                async with cli.stream("POST", f"{URL_ROUTER}/deliberar",
+                                      json=cuerpo) as r:
+                    if r.status_code != 200:
+                        yield _sse({"tipo": "error",
+                                    "mensaje": f"el router respondio {r.status_code}"})
+                        return
+                    async for linea in r.aiter_lines():
+                        # Las lineas ya vienen en formato SSE del router; se
+                        # pasan sin tocarlas. Reinterpretarlas aqui solo añadiria
+                        # un sitio mas donde el formato puede desalinearse.
+                        if linea:
+                            yield linea + "\n"
+                        else:
+                            yield "\n"
         except Exception as e:
-            # El error tambien se transmite: una interfaz que se queda en
-            # blanco sin decir por que es peor que un error en pantalla.
-            yield f"data: {json.dumps({'tipo': 'error', 'mensaje': f'{type(e).__name__}: {e}'})}\n\n"
+            # El error tambien se transmite: una interfaz que se queda en blanco
+            # sin decir por que es peor que un error en pantalla.
+            yield _sse({
+                "tipo": "error",
+                "mensaje": (f"no alcanzo al router en {URL_ROUTER} "
+                            f"({type(e).__name__}). Falta el puente?  "
+                            f"kubectl -n agentes port-forward deploy/router 7012:7012"),
+            })
 
     return StreamingResponse(eventos(), media_type="text/event-stream", headers={
         "Cache-Control": "no-cache",
@@ -74,9 +125,26 @@ async def deliberar(req):
     })
 
 
+def _sse(evento: dict) -> str:
+    return f"data: {json.dumps(evento, ensure_ascii=False)}\n\n"
+
+
 async def agentes(_req):
-    """Las Agent Cards tal cual las publica cada agente. Segmento 2."""
-    return JSONResponse(await flujo.descubrir())
+    """Las Agent Cards, tal cual las publica cada agente. Segmento 2.
+
+    El descubrimiento lo hace el ROUTER, no esta interfaz, y por eso se le
+    pregunta a el. Si lo hiciera aqui, la sala veria un descubrimiento que no es
+    el que el router usa para decidir — dos verdades donde debe haber una.
+    """
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as cli:
+            r = await cli.get(f"{URL_ROUTER}/agentes")
+            return JSONResponse(r.json())
+    except Exception as e:
+        return JSONResponse({"error": f"{type(e).__name__}",
+                             "detalle": f"no alcanzo al router en {URL_ROUTER}"},
+                            status_code=503)
 
 
 async def gpu(_req):
@@ -149,16 +217,32 @@ async def prompts(_req):
 
 
 def version_del_flujo() -> str:
-    """Huella de malla/flujo.py, que este proceso importo AL ARRANCAR.
+    """Huella de malla/flujo.py TAL COMO ESTA EN DISCO, en esta maquina.
 
-    Existe por el mismo motivo que la de los agentes: Python no recarga modulos
-    solos. Se cambia el flujo, se olvida reiniciar esta terminal, y el sintoma
-    es que unos pasos "no salen" -indistinguible de que el flujo se rompiera-.
-    Ya costo varios intentos.
+    Sirve para comparar, no para afirmar. Desde que el router corre en un pod,
+    el codigo que de verdad se ejecuta es el de la IMAGEN, y su huella la publica
+    el propio router en /salud. Los dos numeros tienen que coincidir.
+
+    Si no coinciden, la imagen es vieja:
+        ./malla/agentes-up.sh
+
+    Esta comprobacion existe porque el desfase ya mordio tres veces, y nunca da
+    un error: da resultados viejos, que es peor.
     """
     return hashlib.sha256(
         (RAIZ / "malla" / "flujo.py").read_bytes()
     ).hexdigest()[:12]
+
+
+async def version_del_router() -> str | None:
+    """Lo que el router dice estar corriendo. None si no responde."""
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as cli:
+            r = await cli.get(f"{URL_ROUTER}/salud")
+            return r.json().get("version_codigo")
+    except Exception:
+        return None
 
 
 async def eventos_kernel(_req):
@@ -367,7 +451,17 @@ async def hubble(_req):
 
 
 async def salud(_req):
-    return JSONResponse({"ok": True, "version_flujo": version_del_flujo()})
+    en_disco = version_del_flujo()
+    # Ojo: la del router es la que manda. La del disco solo sirve para saber si
+    # la imagen se quedo atras.
+    en_router = await version_del_router()
+    return JSONResponse({
+        "ok": True,
+        "version_flujo": en_disco,
+        "version_router": en_router,
+        "router": URL_ROUTER,
+        "al_dia": (en_router == en_disco) if en_router else None,
+    })
 
 
 async def indice(_req):

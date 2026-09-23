@@ -159,6 +159,47 @@ spec:
   # interfaz y no de la red. Lo que el segmento 6 necesita cortar esta en la
   # salida, que es donde el agente comprometido actua.
 ---
+# EL ROUTER NECESITA UNA COSA QUE LOS DEMAS NO: LEER LAS TARJETAS.
+#
+# El router lleva `rol: agente`, asi que ya hereda todo lo de arriba. Pero el
+# descubrimiento es un GET a /.well-known/agent-card.json, y la regla de los
+# agentes solo permite POST /a2a. Sin esta politica el segmento 2 se queda sin
+# objeto: el router no puede leer ninguna tarjeta y no tiene a quien despachar.
+#
+# Y de paso es la mejor prueba de que las etiquetas no son decoracion. Aqui hay
+# TRES pods con los mismos pesos y el mismo codigo, y sus permisos son
+# distintos:
+#
+#   investigador  puede llamar herramientas y hablarle al defensor
+#   defensor      lo mismo
+#   router        ademas puede LEER tarjetas, y no usa herramientas
+#
+# Eso es el insight #1 llevado hasta la politica de red: lo que distingue a dos
+# agentes es prompt, identidad y PERMISOS.
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: router-descubrimiento
+  namespace: agentes
+spec:
+  endpointSelector:
+    matchLabels:
+      app: router
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            rol: agente
+      toPorts:
+        - ports:
+            - {port: "7010", protocol: TCP}
+          rules:
+            http:
+              # La ruta EXACTA. No se abre /.well-known entero ni se usa un
+              # comodin: el descubrimiento de A2A es un archivo en una ruta
+              # conocida, y la politica puede ser igual de precisa.
+              - method: "GET"
+                path: "/.well-known/agent-card.json"
+---
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:

@@ -55,7 +55,13 @@ PROMPT_ORQUESTADOR = (
 
 
 def _llm():
-    """Cliente del motor de inferencia, leido de lab/endpoint.env."""
+    """Cliente del motor de inferencia.
+
+    El ENTORNO gana al archivo, por lo mismo que en malla/agente.py: dentro de
+    un pod lab/endpoint.env no existe y el default `localhost:8000` seria el
+    propio pod. En el host no hay variables, asi que sigue ganando el archivo y
+    nada cambia.
+    """
     from openai import OpenAI
     env = RAIZ / "lab" / "endpoint.env"
     v = {}
@@ -64,8 +70,12 @@ def _llm():
             if "=" in linea and not linea.lstrip().startswith("#"):
                 k, _, val = linea.partition("=")
                 v[k.strip()] = val.strip()
-    base = v.get("OPENAI_BASE_URL_HOST", "http://localhost:8000/v1")
-    modelo = v.get("MODEL", "Qwen/Qwen2.5-32B-Instruct-AWQ")
+    base = (os.getenv("OPENAI_BASE_URL_HOST")
+            or v.get("OPENAI_BASE_URL_HOST")
+            or "http://localhost:8000/v1")
+    modelo = (os.getenv("MODEL")
+              or v.get("MODEL")
+              or "Qwen/Qwen2.5-32B-Instruct-AWQ")
     return OpenAI(base_url=base, api_key="no-hace-falta"), modelo
 
 AGENTES = {

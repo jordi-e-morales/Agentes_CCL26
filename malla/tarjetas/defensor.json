@@ -6,7 +6,7 @@
     {
       "protocolBinding": "JSONRPC",
       "protocolVersion": "0.3.0",
-      "url": "http://agente-defensor.agentes.svc.cluster.local:7000/a2a"
+      "url": "http://defensor.agentes.svc.cluster.local:7010/a2a"
     }
   ],
   "defaultInputModes": [
