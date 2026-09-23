@@ -27,15 +27,27 @@ else
 fi
 
 echo ""
-echo "=== 2. Que dice el exportador"
-salida=$(kubectl -n "$NS" logs deploy/otel-collector -c collector --tail=300 2>/dev/null \
+echo "=== 2. Que dice el exportador (ultimos 10 minutos)"
+# CON VENTANA DE TIEMPO, Y NO ES UN DETALLE.
+#
+# El log del Collector se acumula desde que arranco. Un 401 de hace media hora
+# -de cuando el token era el equivocado- se lee igual que uno de ahora, y manda
+# a arreglar algo que ya estaba arreglado. Paso el 2026-09-23.
+#
+# Es el mismo error que con los DROPPED de Hubble: leer un log acumulado sin
+# mirar la hora.
+echo "        son las $(date +%H:%M:%S)"
+salida=$(kubectl -n "$NS" logs deploy/otel-collector -c collector \
+  --since=10m 2>/dev/null \
   | grep -iE "otlp_?http|splunk|export|fail|retry|drop|401|403|404|x509|certificate" \
+  | grep -viE "DroppedLinksCount|DroppedAttributesCount|DroppedEventsCount" \
   | tail -12)
 if [ -n "$salida" ]; then
   echo "$salida" | sed 's/^/        /'
 else
-  nota "(el exportador no ha dicho nada: ni exito ni error)"
-  nota "Eso pasa cuando todavia no ha intentado enviar nada."
+  ok "sin errores del exportador en los ultimos 10 minutos"
+  nota "Si acabas de deliberar, eso quiere decir que las trazas salieron."
+  nota "Si no has deliberado desde hace rato, no prueba nada: lanza una."
 fi
 
 echo ""
@@ -62,6 +74,7 @@ echo "    1 vacio            -> no es Splunk: los agentes no exportan"
 echo "    2 con 401/403      -> el token no vale o no tiene alcance INGEST"
 echo "    2 con 404          -> la ruta del endpoint no es esa"
 echo "    2 con x509         -> un proxy intercepta el TLS"
-echo "    2 vacio y 1 lleno  -> recibio spans pero no intento enviarlos"
+echo "    2 vacio tras deliberar -> salieron bien"
+echo "    2 vacio SIN deliberar  -> no prueba nada, lanza una deliberacion"
 echo "    todo ok y Splunk vacio -> mirar permisos o el sitio de la UI"
 echo ""
