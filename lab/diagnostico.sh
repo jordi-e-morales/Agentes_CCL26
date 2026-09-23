@@ -69,10 +69,20 @@ echo "=== 2b. Huerfanos"
 # Un pod SIN etiqueta `app` tampoco es un error del script: es exactamente lo
 # que era agente-demo, y merece salir en la lista.
 ESPERADOS="orquestador investigador defensor servidor-mcp postgres otel-collector"
+# Los de seguridad/00-pods-de-prueba.yaml. NO son huerfanos: existen a proposito
+# para las pruebas de politica, y servicio-demo en particular hace de "cualquier
+# cosa que corra en tu cluster" porque NO lleva rol=agente.
+#
+# Pero si salen en el grafo, asi que se avisan aparte: legitimos para probar,
+# ruido para proyectar.
+DE_PRUEBA="servicio-demo agente-demo"
 sobra=""
+prueba=""
 while read -r nombre app; do
   [ -z "$nombre" ] && continue
-  if [ -z "$app" ] || ! echo "$ESPERADOS" | grep -qw "$app"; then
+  if echo "$DE_PRUEBA" | grep -qw "$nombre"; then
+    prueba="$prueba $nombre"
+  elif [ -z "$app" ] || ! echo "$ESPERADOS" | grep -qw "$app"; then
     sobra="$sobra $nombre"
   fi
 done <<EOF
@@ -87,7 +97,14 @@ if [ -n "$sobra" ]; then
   nota "Apareceran en el grafo de Hubble como nodos que no sabras explicar."
   nota "Para quitar uno:  kubectl -n $NS delete deploy <nombre>"
 else
-  ok "solo lo que tiene que estar"
+  ok "sin huerfanos"
+fi
+if [ -n "$prueba" ]; then
+  nota ""
+  nota "Pods de prueba corriendo:$prueba"
+  nota "Son legitimos —los usan probar-l7.sh y demo-cilium.sh— pero salen en"
+  nota "el grafo. Si vas a proyectar Hubble UI, quitalos antes:"
+  nota "  kubectl -n $NS delete -f seguridad/00-pods-de-prueba.yaml"
 fi
 
 echo ""
