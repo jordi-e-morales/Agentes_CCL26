@@ -99,13 +99,26 @@ kubectl -n "$NS" logs deploy/investigador --tail=25 2>/dev/null | sed 's/^/  /' 
 
 echo ""
 echo "=== 6. Flujos bloqueados, si Hubble esta a mano"
+# CON LA HORA, Y NO ES UN ADORNO.
+#
+# El buffer de Hubble guarda ~20 minutos de historia (se subio a proposito, para
+# poder narrar una corrida despues de que ocurra). El efecto secundario es que
+# un bloqueo YA ARREGLADO sigue en pantalla y parece actual: paso el 2026-09-23,
+# con dos DROPPED de hace seis minutos que ya no se reproducian.
+#
+# Por eso se imprime la hora de ahora al lado, y se acota la ventana.
 if command -v hubble >/dev/null 2>&1 && hubble status >/dev/null 2>&1; then
-  caidos=$(hubble observe --namespace "$NS" --verdict DROPPED --last 8 2>/dev/null)
+  echo "        son las $(date +%H:%M:%S) — compara con las horas de abajo"
+  caidos=$(hubble observe --namespace "$NS" --verdict DROPPED \
+    --since 5m --last 8 2>/dev/null)
   if [ -n "$caidos" ]; then
-    mal "la red corto estos:"
+    mal "la red corto esto en los ultimos 5 minutos:"
     echo "$caidos" | sed 's/^/        /'
+    nota ""
+    nota "Si las horas son de ANTES de tu ultimo arreglo, es historia:"
+    nota "lanza una deliberacion y vuelve a correr esto para confirmarlo."
   else
-    ok "nada bloqueado por la red"
+    ok "nada bloqueado en los ultimos 5 minutos"
   fi
 else
   nota "(hubble no esta a mano: cilium hubble port-forward &)"
