@@ -124,16 +124,30 @@ y los dos scripts de seguridad. Comprobar:
 hubble status
 ```
 
+Ese port-forward del relay sí puede quedarse en `localhost`: quien lo consulta
+—`hubble observe` y el servidor de la interfaz— corre en el mismo host.
+
 **El grafo de agentes se dibuja aquí, no en un editor visual** (§6): Hubble UI
 pinta lo que de verdad pasó.
 
 ```bash
-cilium hubble ui
+./lab/hubble-ui.sh
 ```
 
-Abre el navegador solo; si no, queda en `http://localhost:12000`. Hay que
-elegir el namespace `agentes` en el desplegable de arriba: arranca vacío y sin
-eso parece roto.
+Se queda corriendo e imprime la URL con la IP del host.
+
+**No usar `cilium hubble ui`.** Hace el port-forward contra `127.0.0.1` e
+intenta abrir un navegador: en un host sin escritorio las dos cosas fallan, y
+desde tu máquina el puerto simplemente no existe. El script lo expone en
+`0.0.0.0`, igual que `ui/servidor.py`, así que se alcanza con la misma IP que ya
+usas para la interfaz.
+
+Dos cosas que hacen parecer que está roto y no lo está:
+
+1. **Arranca vacío.** Hay que elegir el namespace `agentes` en el desplegable de
+   arriba a la izquierda.
+2. **Dibuja tráfico, no diseño.** Si nadie está hablando no hay nada que pintar.
+   Lanza una deliberación y el grafo aparece.
 
 ---
 
