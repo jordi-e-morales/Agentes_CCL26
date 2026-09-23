@@ -122,9 +122,9 @@ pero la regla de honestidad del §6 pide etiquetar lo sustituido, y el script lo
 imprime en pantalla.
 
 En la interfaz esto mismo vive en el panel **Lo que vio la red**, al lado de
-*Lo que vio el kernel*. Ahí las líneas `POST /mcp` llevan una marca `×N
-idénticas`: es el límite de la capa 7 señalándose solo, sin obligar a nadie a
-comparar dos columnas.
+*Lo que vio el kernel*. Ahí se ven varias líneas `POST /mcp` seguidas, todas
+iguales, y la frase que las acompaña es una: *"cuatro herramientas distintas,
+una sola línea para la red"*.
 
 Y el grafo de agentes se dibuja con Hubble UI (`cilium hubble ui`, namespace
 `agentes`), que pinta lo que de verdad pasó — no un editor visual, que pinta lo

@@ -791,9 +791,11 @@ function Fila({ ev }: { ev: Evento }) {
  *      que cuando consulto el historial.
  *
  * Lo segundo es la lamina del segmento 6: la arista estaba autorizada y la
- * intencion no se veia. Se marca sola — regla 3 de la interfaz: no se ponen
- * lineas lado a lado para que alguien busque el parecido, se cuenta cuantas
- * son iguales y se dice.
+ * intencion no se veia. No hace falta adornarlo — la repeticion de POST /mcp
+ * se ve porque esta repetida, y quien narra dice la frase. Un contador
+ * "xN identicas" estuvo aqui y se quito: el numero dependia de cuantos flujos
+ * cupieran en la ventana, asi que no significaba nada y obligaba a buscarle un
+ * sentido. Regla 1 de la interfaz.
  */
 function Red({ activo, corridaId }: { activo: boolean; corridaId: number }) {
   const [datos, setDatos] = useState<any>(null);
@@ -813,15 +815,6 @@ function Red({ activo, corridaId }: { activo: boolean; corridaId: number }) {
   }, [activo, corridaId]);
 
   const flujos: any[] = datos?.flujos ?? [];
-
-  // Cuantas veces aparece cada par metodo+ruta. Si un par sale mas de una vez,
-  // esas lineas son indistinguibles para la politica de red, y eso es
-  // justamente lo que hay que decir en voz alta.
-  const cuenta = new Map<string, number>();
-  for (const f of flujos) {
-    const k = `${f.metodo} ${f.ruta}`;
-    cuenta.set(k, (cuenta.get(k) ?? 0) + 1);
-  }
 
   return (
     <div className="panel" style={{ marginTop: 18 }}>
@@ -850,8 +843,6 @@ function Red({ activo, corridaId }: { activo: boolean; corridaId: number }) {
 
       {flujos.map((f, i) => {
         const bloqueado = f.veredicto === "DROPPED" || f.veredicto === "DENIED";
-        const k = `${f.metodo} ${f.ruta}`;
-        const repetida = (cuenta.get(k) ?? 0) > 1;
         return (
           <div key={i} style={{
             marginTop: 6, padding: "6px 9px", borderRadius: 6,
@@ -867,16 +858,6 @@ function Red({ activo, corridaId }: { activo: boolean; corridaId: number }) {
               )}
               <strong>{f.metodo}</strong>
               <span>{f.ruta}</span>
-              {/* La marca que hace el argumento: esta linea no es unica. */}
-              {repetida && !bloqueado && (
-                <span style={{
-                  fontSize: 11, padding: "1px 6px", borderRadius: 10,
-                  background: "var(--cisco-marino)", color: "var(--cisco-cian)",
-                  border: "1px solid var(--cisco-cian)",
-                }}>
-                  ×{cuenta.get(k)} idénticas
-                </span>
-              )}
             </div>
             <div className="tenue">{f.de} → {f.a}</div>
           </div>
