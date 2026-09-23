@@ -77,17 +77,34 @@ if [ -z "${SPLUNK_TOKEN:-}" ]; then
 fi
 [ -z "$SPLUNK_TOKEN" ] && { echo "Sin token no hay nada que hacer."; exit 1; }
 
-log "Comprobando que el CLUSTER alcanza $INGESTA"
+log "Comprobando que el CLUSTER alcanza Splunk"
 # Desde un POD, no desde el host. Es la misma trampa que con vLLM: el host casi
 # siempre llega, y quien tiene que llegar es el Collector.
-alcance=$(kubectl -n "$NS" exec deploy/otel-collector -c lector -- \
-  sh -c "wget -q -T 8 -O /dev/null --spider '$INGESTA' 2>&1; echo \$?" 2>/dev/null | tail -1)
-if [ "$alcance" = "0" ]; then
-  echo "  ok  el cluster sale a internet y resuelve el realm"
+#
+# SE COMPRUEBAN DNS Y TCP, NO HTTPS.
+# La primera version usaba `wget --spider` de busybox y daba falsas alarmas: el
+# TLS de busybox es limitado y falla contra endpoints modernos aunque la
+# conectividad sea perfecta. Lo que hay que saber es si el nombre resuelve y si
+# el 443 acepta conexiones; del TLS ya se encarga el Collector, que lleva su
+# propia pila.
+HOST=$(echo "$INGESTA" | sed -E 's#^https?://##; s#/.*##')
+resuelve=$(kubectl -n "$NS" exec deploy/otel-collector -c lector -- \
+  sh -c "nslookup $HOST >/dev/null 2>&1 && echo si || echo no" 2>/dev/null | tail -1)
+abierto=$(kubectl -n "$NS" exec deploy/otel-collector -c lector -- \
+  sh -c "nc -z -w 6 $HOST 443 >/dev/null 2>&1 && echo si || echo no" 2>/dev/null | tail -1)
+
+if [ "$resuelve" = "si" ] && [ "$abierto" = "si" ]; then
+  echo "  ok  $HOST resuelve y el 443 responde"
 else
-  echo "  AVISO: el pod no alcanzo $INGESTA"
-  echo "  Puede ser la red del sitio, el DNS, o un proxy. Se continua igual:"
-  echo "  la configuracion queda puesta y empezara a exportar en cuanto haya red."
+  [ "$resuelve" != "si" ] && echo "  MAL  el DNS no resuelve $HOST"
+  [ "$abierto" != "si" ]  && echo "  MAL  el 443 de $HOST no responde"
+  echo ""
+  echo "  Puede ser la red del sitio, un proxy, o que el cluster no salga."
+  echo "  Se continua igual: la configuracion queda puesta y exportara en"
+  echo "  cuanto haya red."
+  echo ""
+  echo "  La prueba que MANDA es el log del Collector despues de deliberar:"
+  echo "    kubectl -n $NS logs deploy/otel-collector -c collector | grep -i error"
 fi
 
 log "Guardando el token como Secret"
