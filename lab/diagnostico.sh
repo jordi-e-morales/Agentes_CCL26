@@ -51,20 +51,33 @@ kubectl -n "$NS" get pod -l rol=agente \
 
 echo ""
 echo "=== 3. Los puentes que la interfaz necesita"
-for par in "7010 investigador" "7011 defensor" "9000 servidor-mcp"; do
-  set -- $par
-  if curl -sf --max-time 3 "http://localhost:$1/salud" >/dev/null 2>&1 \
-     || curl -s --max-time 3 -o /dev/null "http://localhost:$1/" 2>/dev/null; then
+# SOLO DOS, desde que el router es un pod.
+#
+# La interfaz ya no habla con los agentes: habla con el router, y el router les
+# habla desde dentro del cluster. Los puentes de 7010 y 7011 sobran, y este paso
+# los pedia todavia — reportando MAL algo que estaba bien.
+#
+# El del servidor MCP se queda solo para poder probar herramientas a mano; la
+# deliberacion no lo usa.
+comprobar_puente() {  # puerto  deploy  destino_en_el_pod
+  if curl -s --max-time 3 -o /dev/null "http://localhost:$1/" 2>/dev/null; then
     quien=$(curl -s --max-time 3 "http://localhost:$1/salud" 2>/dev/null)
     ok "$1 responde  ${quien:-(sin /salud, normal en el MCP)}"
   else
     mal "$1 NO responde ($2)"
-    nota "  kubectl -n $NS port-forward deploy/$2 $1:${1/9000/9000}"
+    nota "  kubectl -n $NS port-forward deploy/$2 $1:$3"
+  fi
+}
+comprobar_puente 7012 router 7012
+comprobar_puente 9000 servidor-mcp 9000
+
+# Si quedan los viejos puestos no rompen nada, pero conviene saberlo: tenerlos
+# invita a pensar que la interfaz les habla.
+for viejo in 7010 7011; do
+  if curl -s --max-time 2 -o /dev/null "http://localhost:$viejo/salud" 2>/dev/null; then
+    nota "(el $viejo sigue reenviado; ya no hace falta, no estorba)"
   fi
 done
-nota ""
-nota "OJO: si el 7010 responde pero NO dice version_codigo, es un agente"
-nota "     viejo del host, no el pod."
 
 echo ""
 echo "=== 4. El agente alcanza sus dos dependencias?"
@@ -143,11 +156,39 @@ if command -v hubble >/dev/null 2>&1 && hubble status >/dev/null 2>&1; then
   caidos=$(hubble observe --namespace "$NS" --verdict DROPPED \
     --since 5m --last 8 2>/dev/null)
   if [ -n "$caidos" ]; then
-    mal "la red corto esto en los ultimos 5 minutos:"
-    echo "$caidos" | sed 's/^/        /'
+    # LA MEJOR SEÑAL DE QUE UN BLOQUEO ES HISTORIA NO ES LA HORA: es que el pod
+    # que aparece ya no exista.
+    #
+    # Cada `rollout restart` cambia el sufijo del nombre del pod. Un DROPPED que
+    # menciona un pod muerto ocurrio antes de ese reinicio, y eso es un hecho, no
+    # una estimacion — mientras comparar relojes obliga a recordar a que hora se
+    # aplico el arreglo.
+    vivos=$(kubectl -n "$NS" get pod -o name 2>/dev/null | sed 's|pod/||')
+    frescos=0
+    viejos=0
+    while IFS= read -r linea; do
+      [ -z "$linea" ] && continue
+      # Los pods que menciona esta linea.
+      mencionados=$(echo "$linea" | grep -oE "$NS/[a-z0-9.-]+" | sed "s|$NS/||" \
+        | sed 's/:[0-9]*$//' | sort -u)
+      muerto=""
+      for m in $mencionados; do
+        echo "$vivos" | grep -qx "$m" || muerto="si"
+      done
+      if [ -n "$muerto" ]; then
+        echo "        $linea   <-- POD MUERTO, es historia"
+        viejos=$((viejos+1))
+      else
+        echo "        $linea"
+        frescos=$((frescos+1))
+      fi
+    done <<< "$caidos"
     nota ""
-    nota "Si las horas son de ANTES de tu ultimo arreglo, es historia:"
-    nota "lanza una deliberacion y vuelve a correr esto para confirmarlo."
+    if [ "$frescos" -eq 0 ]; then
+      ok "los $viejos son de pods que ya no existen: nada bloqueado AHORA"
+    else
+      mal "$frescos de pods vivos — estos si estan pasando"
+    fi
   else
     ok "nada bloqueado en los ultimos 5 minutos"
   fi
