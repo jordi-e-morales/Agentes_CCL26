@@ -574,6 +574,52 @@ guardrail, cuatro llamadas concurrentes con contexto largo se encolan. Bajar
 `CTX` a 16k casi duplica la concurrencia y es la optimización más barata del
 proyecto.
 
+### Las dos opciones de arranque que hay que saber explicar
+
+Están a la vista en el panel *El modelo* del segmento 1, leídas de
+`docker inspect`. Alguien va a preguntar por ellas.
+
+**`--enable-prefix-caching`.** Cuando dos peticiones empiezan igual, vLLM
+reutiliza el cálculo de la parte común en vez de rehacerlo. En la deliberación
+eso es casi todo: medido el 2026-09-23, el investigador manda 2967 tokens en la
+ronda 1 y 3859 en la 2 — y esos 2967 son **los mismos tokens**. El prompt del
+rol, las definiciones de las seis herramientas y lo dicho hasta ahí no cambian.
+Sin esta opción, los ~41 segundos de una deliberación serían bastantes más, y el
+§12 ya dice que el coste está en las ocho llamadas al modelo.
+
+**`--tool-call-parser hermes`.** Es un traductor de formato. El modelo **no**
+emite `tool_calls` de OpenAI: Qwen2.5 escribe la llamada como texto, entre
+etiquetas `<tool_call>…</tool_call>`. El parser convierte ese texto en el campo
+`tool_calls` que define la API de OpenAI. Se llama `hermes` porque ese formato lo
+popularizaron los modelos Hermes de NousResearch, y Qwen2.5 usa uno compatible.
+Sin parser, `--enable-auto-tool-choice` no sirve: la llamada llegaría como texto
+suelto dentro de `content`.
+
+#### Y de ahí sale una lámina que nadie espera
+
+**En la cadena hay DOS traducciones, no una:**
+
+```
+Qwen escribe  <tool_call>{"name": "consulta_historial", …}</tool_call>
+     ↓   vLLM, con --tool-call-parser hermes
+respuesta con `tool_calls` en formato OpenAI
+     ↓   nuestro código, en malla/agente.py
+tools/call por MCP
+```
+
+El §9 llamaba *"el riesgo real"* a que el modelo no habla MCP y alguien tiene que
+traducir. Se resolvió con el puente escrito en `malla/agente.py` — pero **la
+primera mitad de esa traducción no la escribimos: es una opción de arranque del
+motor**, y casi nadie en la sala sabe que existe.
+
+> El modelo no habla el protocolo de las herramientas. Ni el de OpenAI, ni MCP.
+> Escribe texto con un formato que aprendió en el entrenamiento, y hay **dos
+> capas de traducción** entre eso y una consulta a la base de datos. Una es una
+> opción del motor; la otra la escribí yo.
+
+Conecta directo con el meta-argumento del §6: cada capa de traducción hace el
+sistema más cómodo de construir y más difícil de ver.
+
 ### Qué se reusa de la demo v1
 
 `triage-multiagente` no se toca, pero se le copian las piezas probadas: las
