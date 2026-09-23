@@ -323,6 +323,7 @@ antes. Ya mordió cinco veces.
 | `ui/servidor.py` | **Ctrl+C y relanzar esa terminal** | Python no recarga módulos solos |
 | `ui/src/**` | `cd ui && npm run build` + recargar navegador | Son estáticos, no tocan el backend |
 | `seguridad/*.yaml` | `kubectl apply -f ...` | En caliente, no reinicia nada |
+| Un ConfigMap o un Secret | **`kubectl rollout restart` del pod que lo usa** | No se recargan solos: el proceso los leyó al arrancar |
 | `datos/*.sql` | `./datos/postgres-up.sh --reset` | |
 | Se reinició un pod | rehacer su `port-forward` | Los puentes mueren con el pod, **y no avisan** |
 | Se recreó el cluster | `./lab/publica-vllm.sh` | La IP del host cambió |

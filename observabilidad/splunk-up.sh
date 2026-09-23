@@ -176,6 +176,25 @@ log "Dandole el token al Collector"
 kubectl -n "$NS" set env deploy/otel-collector -c collector \
   --from=secret/splunk >/dev/null && echo "  ok"
 
+# EL REINICIO ES OBLIGATORIO, Y NO SE PUEDE DEJAR AL AZAR.
+#
+# Aqui hubo un fallo que costo un rato el 2026-09-23. Dos cosas que parecen
+# automaticas y no lo son:
+#
+#   1. Un ConfigMap montado no se recarga solo. El Collector lee su config al
+#      arrancar y punto.
+#   2. Recrear un Secret NO cambia la variable de entorno de un pod que ya
+#      corre: las variables se leen al arrancar el contenedor.
+#
+# Y el reinicio tampoco venia gratis: `kubectl set env` solo provoca un rollout
+# si el Deployment CAMBIA. Como la referencia al Secret ya era la misma, no
+# cambiaba nada, no habia reinicio, y el pod seguia con el token viejo. El
+# sintoma era un 401 con un token que -comprobado aparte- funcionaba.
+#
+# Con `rollout restart` no hay ambiguedad: siempre arranca un pod nuevo, que lee
+# el ConfigMap de ahora y el Secret de ahora.
+log "Reiniciando el Collector para que lea lo nuevo"
+kubectl -n "$NS" rollout restart deploy/otel-collector >/dev/null
 kubectl -n "$NS" rollout status deploy/otel-collector --timeout=120s
 
 log "Que dice el Collector al arrancar"
