@@ -62,8 +62,11 @@ data:
       # no se inventan aqui.
       # ---------------------------------------------------------------------
       #
-      # Splunk Observability Cloud (necesita internet y un token de ingesta):
-      # otlphttp/splunk:
+      # Splunk Observability Cloud (necesita internet y un token de ingesta).
+      # `otlp_http` y no `otlphttp`: el segundo es un alias deprecado y el
+      # Collector 0.161 avisa de ello al arrancar. Un warning en pantalla el dia
+      # del evento es ruido que hay que explicar.
+      # otlp_http/splunk:
       #   traces_endpoint: https://ingest.<REALM>.signalfx.com/v2/trace/otlp
       #   headers:
       #     X-SF-Token: ${env:SPLUNK_ACCESS_TOKEN}

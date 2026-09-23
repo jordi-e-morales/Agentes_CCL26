@@ -124,13 +124,16 @@ manif, trazas_url = sys.argv[1], sys.argv[2]
 s = io.open(manif, encoding="utf-8").read()
 
 # 1. Descomentar el bloque del exportador, con el realm sustituido.
-viejo = """      # Splunk Observability Cloud (necesita internet y un token de ingesta):
-      # otlphttp/splunk:
+viejo = """      # Splunk Observability Cloud (necesita internet y un token de ingesta).
+      # `otlp_http` y no `otlphttp`: el segundo es un alias deprecado y el
+      # Collector 0.161 avisa de ello al arrancar. Un warning en pantalla el dia
+      # del evento es ruido que hay que explicar.
+      # otlp_http/splunk:
       #   traces_endpoint: https://ingest.<REALM>.signalfx.com/v2/trace/otlp
       #   headers:
       #     X-SF-Token: ${env:SPLUNK_ACCESS_TOKEN}"""
 nuevo = f"""      # Splunk Observability Cloud. Lo pone observabilidad/splunk-up.sh.
-      otlphttp/splunk:
+      otlp_http/splunk:
         traces_endpoint: {trazas_url}
         headers:
           X-SF-Token: ${{env:SPLUNK_ACCESS_TOKEN}}"""
@@ -143,7 +146,7 @@ s = s.replace(viejo, nuevo)
 viejo = "          exporters: [debug, file]"
 if viejo not in s:
     sys.exit("no encuentro el pipeline de trazas")
-s = s.replace(viejo, "          exporters: [debug, file, otlphttp/splunk]")
+s = s.replace(viejo, "          exporters: [debug, file, otlp_http/splunk]")
 sys.stdout.write(s)
 PY
 if [ $? -ne 0 ]; then echo "  FALLO al preparar la configuracion"; rm -f "$TMP"; exit 1; fi
