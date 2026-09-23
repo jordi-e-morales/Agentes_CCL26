@@ -200,6 +200,17 @@ no una traza distribuida.
 **Lo que es best effort:** OTel → Collector → Splunk, con un span por mensaje
 A2A y un span por tool call, y `trace_id` propagado. Si llega, es la cereza.
 
+**LLEGÓ, el 2026-09-23, y mejor de lo previsto.** Splunk Observability Cloud
+reconoce los spans en su sección **Agent Observability** sin configurar nada: la
+apuesta de emitir los dos juegos de nombres se pagó sola. Lo que aparece gratis:
+
+- Las cifras de tokens, leídas de `gen_ai.usage.input_tokens` / `output_tokens`
+- Los `invoke_agent` tratados como invocaciones de agente, con su anidamiento —
+  o sea el salto lateral dibujado por un tercero
+- Spans `MCP send tools/list` y `MCP send tools/call` que **no emite nuestro
+  código**: los emite el SDK de MCP, que se instrumenta solo. Visibilidad del
+  protocolo por debajo de nuestros `execute_tool`, sin pedirla
+
 Esa nomenclatura no es cosmética: es lo que hace que llegar a Splunk sea
 **envolver** y no reescribir. Si hoy se llamaran `entrada` y `salida`, mañana
 habría que tocar cada sitio donde se usan.
@@ -781,8 +792,10 @@ una decisión: si alguien le da Ctrl+C, se relanza con flecha arriba y Enter.
   elección, el sobre A2A, cada herramienta con su respuesta y el salto lateral.
   **La espera es la demo**, no una pausa dentro de ella.
 
-  Medido el 2026-09-22: una deliberación completa con disposición tarda **~41
-  segundos** y 47 spans. El coste está en las ocho llamadas al modelo (3 a 7 s
+  Medido el 2026-09-23 en Splunk, con el debate ya a dos rondas: una
+  deliberación completa tarda **~78 segundos**. (El 2026-09-22, con una sola
+  ronda, eran ~41 s y 47 spans. Añadir la segunda ronda casi dobló el tiempo —
+  es de esperar: son el doble de llamadas al modelo.) El coste está en las ocho llamadas al modelo (3 a 7 s
   cada una); las herramientas no pintan nada (20 a 96 ms). Si alguna vez hace
   falta acortar, las palancas son `CTX=16384`, prompts más cortos, y que el
   paso 8 no vuelva a saltar al vecino. Hoy no hace falta.
