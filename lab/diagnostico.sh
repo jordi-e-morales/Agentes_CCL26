@@ -91,14 +91,45 @@ except Exception as e:
 done
 
 echo ""
-echo "=== 5. Lo ultimo que dijo el investigador"
+echo "=== 5. El router alcanza las tarjetas?"
+# "Ningun agente responde" es el mensaje mas engañoso del sistema: suena a que
+# los agentes estan caidos, y lo que suele pasar es que falta la politica
+# router-descubrimiento y la red corta el GET de la tarjeta.
+for pol in agentes-salida router-descubrimiento; do
+  if kubectl -n "$NS" get ciliumnetworkpolicy "$pol" >/dev/null 2>&1; then
+    ok "politica $pol aplicada"
+  else
+    mal "politica $pol NO aplicada"
+    nota "  kubectl apply -f seguridad/cilium-l7.yaml"
+  fi
+done
+if kubectl -n "$NS" get deploy router >/dev/null 2>&1; then
+  r=$(kubectl -n "$NS" exec deploy/router -- python3 -c "
+import urllib.request, json
+vivos = []
+for n in ('investigador','defensor'):
+    try:
+        urllib.request.urlopen(f'http://{n}:7010/.well-known/agent-card.json', timeout=8)
+        vivos.append(n)
+    except Exception as e:
+        vivos.append(f'{n}:{type(e).__name__}')
+print(' '.join(vivos))
+" 2>/dev/null | tail -1)
+  case "$r" in
+    "investigador defensor") ok "el router lee las dos tarjetas" ;;
+    *) mal "el router no las lee todas: $r" ;;
+  esac
+fi
+
+echo ""
+echo "=== 6. Lo ultimo que dijo el investigador"
 # Aqui se ve exactamente donde se quedo: si esta esperando al modelo, si una
 # herramienta devolvio vacio, o si el salto lateral no salio.
 kubectl -n "$NS" logs deploy/investigador --tail=25 2>/dev/null | sed 's/^/  /' \
   || echo "  (sin logs)"
 
 echo ""
-echo "=== 6. Flujos bloqueados, si Hubble esta a mano"
+echo "=== 7. Flujos bloqueados, si Hubble esta a mano"
 # CON LA HORA, Y NO ES UN ADORNO.
 #
 # El buffer de Hubble guarda ~20 minutos de historia (se subio a proposito, para

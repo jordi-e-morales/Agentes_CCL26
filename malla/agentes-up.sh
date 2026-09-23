@@ -64,6 +64,35 @@ done
 log "Publicando vLLM dentro del cluster"
 "$RAIZ/lab/publica-vllm.sh" 2>&1 | sed 's/^/  /'
 
+# LAS POLITICAS QUE ESTE DESPLIEGUE NECESITA.
+#
+# Se comprueba aqui porque ya fallo dos veces seguidas, y el sintoma no se parece
+# a su causa: los pods arrancan bien, /salud responde bien, y la deliberacion muere
+# diciendo "ningun agente responde" — que suena a que los agentes estan caidos
+# cuando lo que pasa es que la red no deja pasar la peticion.
+#
+# El orden importa: `rol: agente` los pone en denegacion por omision de salida en
+# cuanto alguna politica los selecciona, asi que desplegar sin las reglas deja un
+# sistema que parece sano y no funciona.
+log "Comprobando las politicas de red"
+faltan=""
+for pol in agentes-salida router-descubrimiento; do
+  kubectl -n "$NS" get ciliumnetworkpolicy "$pol" >/dev/null 2>&1 || faltan="$faltan $pol"
+done
+if [ -n "$faltan" ]; then
+  echo "  FALTAN:$faltan"
+  echo ""
+  echo "  Sin ellas la deliberacion dira 'ningun agente responde', que NO"
+  echo "  significa que los agentes esten caidos: significa que la red corta"
+  echo "  la peticion. Aplicalas:"
+  echo ""
+  echo "    kubectl apply -f seguridad/cilium-l7.yaml"
+  echo "    ./lab/publica-vllm.sh      # la de vLLM necesita la IP del host"
+  echo ""
+else
+  echo "  ok  las dos estan aplicadas"
+fi
+
 log "Comprobando que los tres arrancaron"
 # La huella del codigo: la misma que la interfaz compara contra el disco. Los
 # tres salen de la MISMA imagen, asi que sus huellas no son iguales entre si
