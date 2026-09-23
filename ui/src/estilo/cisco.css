@@ -141,7 +141,10 @@ pre.sobre {
   /* El lateral era de 380px y la tabla de nvidia-smi (81 columnas) no cabia:
    * habia que desplazarla para ver la utilizacion, que es justo el dato que se
    * quiere enseñar. A 470px y con fuente reducida entra entera. */
-  grid-template-columns: minmax(0, 1fr) 470px;
+  /* TRES columnas desde el 2026-09-23: el rail de segmentos, el contenido, y
+   * el contexto. El rail es lo que convierte esto de "una corrida que se lee"
+   * en "una sesion que se presenta". */
+  grid-template-columns: 210px minmax(0, 1fr) 470px;
   gap: 28px;
   max-width: 1480px;
   margin: 0 auto;
@@ -153,7 +156,80 @@ pre.sobre {
 @media (max-width: 1200px) {
   .columnas { grid-template-columns: 1fr; }
   .lateral { position: static; }
+  /* En pantalla estrecha el rail pasa a ser una fila de pestañas arriba.
+   * `width: auto` es imprescindible: sin el, el `width: 100%` de los botones
+   * gana y cada uno se queda en su propia linea, o sea sigue siendo una
+   * columna disfrazada de fila. */
+  .rail { position: static; flex-direction: row; flex-wrap: wrap; }
+  .rail button {
+    width: auto;
+    border-left-width: 0;
+    border-bottom: 3px solid var(--borde);
+    border-radius: var(--radio) var(--radio) 0 0;
+  }
+  .rail-activo { border-bottom-color: var(--cisco-cian) !important; }
 }
+
+/* ---------------------------------------------------------------------------
+ * EL RAIL DE SEGMENTOS.
+ *
+ * Es la estructura de la SESION, no de la corrida. Quien presenta tiene que
+ * poder saltar al segmento 6 sin buscar con scroll en medio de la charla, y
+ * volver al 1 si alguien pregunta algo de atras.
+ *
+ * Sticky como el lateral, y por el mismo motivo: perder de vista donde estas
+ * dentro del arco obliga a recordarlo.
+ * ------------------------------------------------------------------------- */
+.rail {
+  position: sticky;
+  top: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-self: start;
+}
+
+.rail button {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid transparent;
+  /* La barra de la izquierda es el indicador de "aqui estas". Marcar con color
+   * de fondo solo se pierde con un proyector malo; una barra se ve siempre. */
+  border-left: 3px solid var(--borde);
+  border-radius: 0 var(--radio) var(--radio) 0;
+  color: var(--texto-suave);
+  padding: 10px 12px;
+  font-family: var(--fuente);
+  font-size: var(--texto-chico);
+  line-height: 1.25;
+  transition: background 120ms, color 120ms, border-color 120ms;
+}
+
+.rail button:hover {
+  background: var(--panel);
+  color: var(--texto);
+}
+
+.rail-activo {
+  background: var(--panel) !important;
+  border-left-color: var(--cisco-cian) !important;
+  color: var(--texto) !important;
+  font-weight: 600;
+}
+
+.rail-n {
+  font-family: var(--fuente-mono);
+  font-size: 15px;
+  color: var(--texto-tenue);
+  min-width: 12px;
+}
+
+.rail-activo .rail-n { color: var(--cisco-cian); }
 
 /* ---------------------------------------------------------------------------
  * La (i) de informacion.

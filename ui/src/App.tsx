@@ -39,6 +39,57 @@ const CASOS = [
     peligroso: true },
 ];
 
+/* LOS SEIS SEGMENTOS DE LA SESION.
+ *
+ * POR QUE LA INTERFAZ SE NAVEGA ASI Y NO POR LA CORRIDA
+ * -----------------------------------------------------
+ * Hasta el 2026-09-23 esta pantalla contaba UNA DELIBERACION, de arriba abajo.
+ * Eso esta bien para leerla y mal para presentarla: quien narra necesita contar
+ * UNA SESION, que tiene seis partes y se cuentan en orden pero se enseñan
+ * sueltas.
+ *
+ * El §2 del CLAUDE.md lo pide explicitamente: "cada segmento necesita poder
+ * enseñarse solo, sin depender de que el anterior se haya ejecutado en esa
+ * misma corrida". Con una sola columna lineal eso obligaba a buscar con scroll
+ * en medio de la charla.
+ *
+ * `ve` dice que eventos de la deliberacion pertenecen a cada segmento. Filtrar
+ * no es solo comodidad: el segmento 4 enseñando SOLO las llamadas a
+ * herramientas es mucho mas claro que el mismo dato perdido en la cronologia.
+ */
+const SEGMENTOS = [
+  {
+    n: 1, titulo: "Un agente no es un modelo",
+    cierra: "¿Cómo se encuentran?",
+    ve: [] as string[],
+  },
+  {
+    n: 2, titulo: "Se descubren",
+    cierra: "¿Cómo se hablan?",
+    ve: ["agente", "eleccion"],
+  },
+  {
+    n: 3, titulo: "Se hablan",
+    cierra: "¿De dónde sacan los datos?",
+    ve: ["paso", "sobre", "salto", "argumento", "esperando", "sintesis", "error"],
+  },
+  {
+    n: 4, titulo: "Herramientas por MCP",
+    cierra: "¿Cómo sé qué pasó?",
+    ve: ["herramienta", "sin_herramientas"],
+  },
+  {
+    n: 5, titulo: "Observabilidad",
+    cierra: "¿Y si alguien abusa de esto?",
+    ve: ["consumo"],
+  },
+  {
+    n: 6, titulo: "Control",
+    cierra: "Cierre",
+    ve: [],
+  },
+];
+
 export default function App() {
   const [eventos, setEventos] = useState<Evento[]>([]);
   const [corriendo, setCorriendo] = useState(false);
@@ -47,6 +98,9 @@ export default function App() {
   // Sube en cada arranque. El panel del kernel lo usa para saber que muertes
   // ya existian antes y no mezclarlas con las de ahora.
   const [corridaId, setCorridaId] = useState(0);
+  // 0 = "Todo", la vista lineal de siempre. Se conserva como red de seguridad:
+  // si en vivo algo no aparece donde deberia, ahi esta la corrida entera.
+  const [segmento, setSegmento] = useState(1);
   const fuente = useRef<EventSource | null>(null);
 
   function arrancar(c: typeof CASOS[0]) {
@@ -59,6 +113,9 @@ export default function App() {
     setHora(new Date().toLocaleTimeString("es"));
     setCorridaId((n) => n + 1);
     setCorriendo(true);
+    // Si estas en un segmento que no mira la deliberacion, arrancarla y no ver
+    // nada parece que fallo. Se salta al 3, que es donde empieza a pasar.
+    if (segmento === 1 || segmento === 6) setSegmento(3);
     const es = new EventSource(`/api/deliberar?alerta=${c.id}&sujeto=${c.sujeto}`);
     fuente.current = es;
     es.onmessage = (m) => {
@@ -80,9 +137,33 @@ export default function App() {
       </header>
 
       <div className="columnas">
+        {/* EL RAIL: la sesion, no la corrida.
+            Se queda fijo. Quien presenta tiene que poder saltar al segmento 6
+            sin buscar, y volver al 1 si alguien pregunta algo de atras. */}
+        <nav className="rail">
+          {SEGMENTOS.map((sg) => (
+            <button
+              key={sg.n}
+              onClick={() => setSegmento(sg.n)}
+              className={segmento === sg.n ? "rail-activo" : ""}
+            >
+              <span className="rail-n">{sg.n}</span>
+              <span className="rail-t">{sg.titulo}</span>
+            </button>
+          ))}
+          <button
+            onClick={() => setSegmento(0)}
+            className={segmento === 0 ? "rail-activo" : ""}
+            style={{ marginTop: 10, opacity: 0.75 }}
+          >
+            <span className="rail-n">·</span>
+            <span className="rail-t">Todo</span>
+          </button>
+        </nav>
+
         <main>
-        {/* Los dos dominios, lado a lado. Es la prueba de neutralidad: el mismo
-            codigo, los mismos agentes, dos mundos que no se parecen. */}
+        {/* Arrancar una deliberacion se puede desde cualquier segmento. En vivo
+            hace falta poder relanzar sin navegar a otro sitio primero. */}
         <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 8 }}>
           {CASOS.map((c) => (
             <button
@@ -113,32 +194,91 @@ export default function App() {
             <span className="tenue" style={{ fontSize: 13 }}>corrida de las {hora}</span>
           )}
         </div>
-        <p className="tenue" style={{ fontSize: "var(--texto-chico)", marginTop: 0 }}>
-          Mismo código, mismos agentes, mismas cinco herramientas. Lo único que
-          cambia es el caso.
-        </p>
 
-        {eventos.length === 0 && !corriendo && (
-          <div className="panel" style={{ marginTop: 24 }}>
-            <p style={{ margin: 0 }} className="suave">
-              Elige un caso para ver la deliberación completa: cómo se descubren,
-              qué evidencia consultan y qué se dicen entre ellos.
-            </p>
-          </div>
+        {/* EL TITULO DEL SEGMENTO, con la pregunta que lo cierra.
+            Esa pregunta es el guion: es lo que enlaza con el siguiente. Tenerla
+            en pantalla evita depender de acordarse en vivo. */}
+        {segmento > 0 && (() => {
+          const sg = SEGMENTOS.find((x) => x.n === segmento)!;
+          return (
+            <div style={{ margin: "18px 0 14px" }}>
+              <h2 style={{ margin: 0, fontSize: 22 }}>
+                <span className="tenue" style={{ marginRight: 10 }}>{sg.n}</span>
+                {sg.titulo}
+              </h2>
+              <p className="suave" style={{ margin: "4px 0 0", fontSize: "var(--texto-chico)" }}>
+                termina con: <strong>{sg.cierra}</strong>
+              </p>
+            </div>
+          );
+        })()}
+
+        {/* Segmento 1: no necesita corrida.
+            LA GPU SE QUEDA EN EL LATERAL, y no es por espacio. El segmento
+            defiende que los dos agentes son el mismo modelo en el mismo
+            hardware, y que lo unico que los separa es el prompt. Con el
+            hardware a la derecha, fijo, y las dos identidades a la izquierda,
+            la pantalla dice eso sola antes de que nadie lo explique. */}
+        {segmento === 1 && <Prompts />}
+
+        {/* Segmento 6: tampoco necesita corrida, y ese es el punto. */}
+        {segmento === 6 && (
+          <>
+            <Kernel activo={corriendo} corridaId={corridaId} />
+            <Red activo={corriendo} corridaId={corridaId} />
+          </>
         )}
 
-        {eventos.map((ev, i) => <Fila key={i} ev={ev} />)}
-        {eventos.some((e) => e.tipo === "fin") && <Cascada corridaId={corridaId} />}
+        {/* Los segmentos 2 a 5 se alimentan de la deliberacion. Cada uno ve
+            solo sus eventos: el 4 enseñando UNICAMENTE las herramientas es mas
+            claro que el mismo dato perdido en la cronologia completa. */}
+        {(segmento === 0 || (segmento >= 2 && segmento <= 5)) && (() => {
+          const sg = SEGMENTOS.find((x) => x.n === segmento);
+          const visibles = segmento === 0
+            ? eventos
+            : eventos.filter((e) => sg!.ve.includes(e.tipo));
+
+          if (eventos.length === 0 && !corriendo) {
+            return (
+              <div className="panel" style={{ marginTop: 12 }}>
+                <p style={{ margin: 0 }} className="suave">
+                  Elige un caso arriba para ver la deliberación.
+                </p>
+              </div>
+            );
+          }
+          if (visibles.length === 0) {
+            return (
+              <div className="panel" style={{ marginTop: 12 }}>
+                <p style={{ margin: 0 }} className="suave">
+                  {corriendo
+                    ? "Todavía no ha pasado nada de este segmento en esta corrida."
+                    : "Esta corrida no produjo nada de este segmento."}
+                </p>
+              </div>
+            );
+          }
+          return (
+            <>
+              {visibles.map((ev, i) => <Fila key={i} ev={ev} />)}
+              {/* La cascada es del 5: es la traza de la corrida entera. */}
+              {(segmento === 5 || segmento === 0) &&
+                eventos.some((e) => e.tipo === "fin") &&
+                <Cascada corridaId={corridaId} />}
+            </>
+          );
+        })()}
         </main>
 
-        {/* El lateral no se mueve al hacer scroll: la GPU y los prompts son el
-            contexto que da sentido a todo lo de la izquierda, y perderlos de
-            vista obligaria a recordarlos. */}
+        {/* El lateral se queda con lo que es CONTEXTO en todo momento. Lo que
+            pertenece a un segmento concreto se mudo a su segmento. */}
         <aside className="lateral">
+          {/* La GPU esta SIEMPRE. Es el contexto que sostiene toda la sesion:
+              todo lo que pasa a la izquierda corre en ese aparato. */}
           <GPU activo={corriendo} />
-          <Prompts />
-          <Kernel activo={corriendo} corridaId={corridaId} />
-          <Red activo={corriendo} corridaId={corridaId} />
+          {segmento === 0 && <Prompts />}
+          {segmento === 0 && <Kernel activo={corriendo} corridaId={corridaId} />}
+          {segmento === 0 && <Red activo={corriendo} corridaId={corridaId} />}
         </aside>
       </div>
     </>
