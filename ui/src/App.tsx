@@ -90,7 +90,7 @@ const SEGMENTOS = [
     ve: ["consumo"],
   },
   {
-    n: 6, titulo: "Control",
+    n: 6, titulo: "Seguridad y Control",
     cierra: "Cierre",
     ve: [],
   },
