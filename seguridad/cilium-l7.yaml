@@ -7,7 +7,7 @@
 #   1. Cilium SI distingue metodo y ruta. Un agente puede hacer POST /mcp y
 #      nada mas: cualquier otra ruta se corta con 403. Eso es capa 7 de verdad.
 #
-#   2. Cilium NO puede ver QUE HERRAMIENTA se llamo. Las cinco viven detras de
+#   2. Cilium NO puede ver QUE HERRAMIENTA se llamo. Las seis viven detras de
 #      la misma ruta, porque MCP multiplexa sobre JSON-RPC. consulta_historial
 #      y dispone_caso son, para la red, la misma peticion.
 #
@@ -54,7 +54,7 @@ spec:
     # LA ARISTA AUTORIZADA. Solo POST /mcp, solo hacia el servidor de
     # herramientas. Cualquier otro metodo o ruta se corta con 403.
     #
-    # Y aqui esta el limite: las CINCO herramientas viajan por esta misma
+    # Y aqui esta el limite: las SEIS herramientas viajan por esta misma
     # regla. La red no puede distinguir una consulta de una disposicion.
     - toEndpoints:
         - matchLabels:
@@ -67,8 +67,48 @@ spec:
               - method: "POST"
                 path: "/mcp"
 
+    # EL SALTO LATERAL, Y LA MEJOR LAMINA DE LA SESION.
+    #
+    # Un agente le habla a otro con POST /a2a. Comparalo con la regla de arriba:
+    #
+    #   A2A: Cilium ve la arista Y la ruta.   /a2a es /a2a.
+    #   MCP: Cilium ve la arista y nada mas.  /mcp son las SEIS herramientas.
+    #
+    # Los dos protocolos son JSON-RPC sobre HTTP. La diferencia es que A2A usa
+    # una ruta por proposito y MCP multiplexa todo sobre una. Por eso el §6 dice
+    # que incluso la capa 7 se queda corta si el protocolo multiplexa: aqui
+    # estan las dos reglas, una al lado de la otra, para demostrarlo.
+    #
+    # Sin esta regla el salto lateral se corta: al seleccionar a los agentes,
+    # esta politica los pone en denegacion por omision para toda su salida. Es
+    # el motivo por el que mover los agentes a pods OBLIGA a escribirla.
+    - toEndpoints:
+        - matchLabels:
+            rol: agente
+      toPorts:
+        - ports:
+            - {port: "7010", protocol: TCP}
+          rules:
+            http:
+              - method: "POST"
+                path: "/a2a"
+
+    # Las trazas al Collector. Sin esta regla los spans se pierden en silencio:
+    # el exportador OTLP no se queja de forma visible, asi que el sintoma seria
+    # una cascada incompleta sin ningun error que lo explique.
+    - toEndpoints:
+        - matchLabels:
+            app: otel-collector
+      toPorts:
+        - ports:
+            - {port: "4318", protocol: TCP}
+
     # El motor de inferencia vive FUERA del cluster, en el host. "host" es la
     # entidad de Cilium para el nodo local; sin esto el agente no alcanza vLLM.
+    #
+    # Aplica aunque el agente llame a `http://vllm:8000`: ese Service no tiene
+    # selector y sus Endpoints apuntan a la IP del host, asi que para Cilium el
+    # trafico va a la entidad `host`.
     - toEntities:
         - host
       toPorts:
@@ -77,6 +117,13 @@ spec:
 
   # NO hay regla hacia postgres. Esa omision es deliberada y es el demo: el
   # agente NO puede ir directo a la base. Tiene que pasar por la herramienta.
+  #
+  # Y NO se restringe la ENTRADA a los agentes, tambien a proposito. En cuanto
+  # una politica los seleccionara para ingress, quedarian en denegacion por
+  # omision en esa direccion y el `kubectl port-forward` con el que la interfaz
+  # del host los alcanza dejaria de funcionar — con un fallo que parece de la
+  # interfaz y no de la red. Lo que el segmento 6 necesita cortar esta en la
+  # salida, que es donde el agente comprometido actua.
 ---
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy

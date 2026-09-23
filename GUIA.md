@@ -22,13 +22,18 @@ Eso dice qué falta en cualquier momento. Si algo va mal, empieza por ahí.
 | 4 | PostgreSQL | Pod | No |
 | 5 | Servidor MCP | Pod | No |
 | 6 | Collector de OTel | Pod | No |
-| 7 | `port-forward` del MCP | Host | **Sí** |
-| 8 | Agente investigador | Host | **Sí** |
-| 9 | Agente defensor | Host | **Sí** |
-| 10 | La interfaz | Host | **Sí** |
+| 7 | **Agente investigador** | **Pod** | No |
+| 8 | **Agente defensor** | **Pod** | No |
+| 9 | Los tres `port-forward` | Host | **Sí** |
+| 10 | Relay de Hubble | Host | **Sí** |
+| 11 | La interfaz | Host | **Sí** |
 
-**Cuatro terminales** se quedan abiertas. Lo demás vive en el cluster o en
-Docker y sobrevive a que cierres la sesión.
+**Tres terminales** se quedan abiertas. Lo demás vive en el cluster o en Docker
+y sobrevive a que cierres la sesión.
+
+Los agentes pasaron de host a pods el 2026-09-23, y es el cambio que hace
+enseñables los segmentos 3 y 6: sólo como pods su arista existe para Cilium y
+para Hubble.
 
 ---
 
@@ -151,29 +156,57 @@ Dos cosas que hacen parecer que está roto y no lo está:
 
 ---
 
-## Las cuatro terminales
+## Los agentes son pods
+
+**Esto cambió el 2026-09-23 y es importante.** Antes los agentes corrían como
+procesos en el host con `python malla/agente.py`. Ya no: son dos Deployments.
+
+La razón está en `malla/Dockerfile`, y no es despliegue por gusto. Con los
+agentes en el host, el salto lateral `investigador → defensor` era
+`localhost:7010 → localhost:7011` y **nunca tocaba la red del cluster**: Cilium
+no tenía nada que gobernar, Hubble nada que dibujar, y las políticas que
+seleccionan `rol: agente` no aplicaban a nadie real. La v1 los tenía como pods;
+esto lo recupera.
+
+```bash
+./malla/agentes-up.sh
+```
+
+Compila la imagen, la carga en kind, despliega los dos, y publica vLLM dentro
+del cluster. Idempotente: se puede repetir.
+
+Cada cambio en `malla/agente.py` pide volver a correrlo. Si sólo cambias una
+variable del ConfigMap (`RONDAS_DEBATE`, por ejemplo), basta:
+
+```bash
+kubectl apply -f malla/00-agentes.yaml && kubectl -n agentes rollout restart deploy/investigador deploy/defensor
+```
+
+---
+
+## Las tres terminales
 
 Estas sí hay que dejarlas abiertas, cada una en su ventana.
 
-**Terminal 1 — el puente a las herramientas**
+**Terminal 1 — los puentes a los pods**
+
+La interfaz corre en el host y tiene que alcanzar a los agentes y al servidor de
+herramientas, que ahora viven todos dentro del cluster:
 
 ```bash
-kubectl -n agentes port-forward deploy/servidor-mcp 9000:9000
+kubectl -n agentes port-forward deploy/investigador 7010:7010 & kubectl -n agentes port-forward deploy/defensor 7011:7010 & kubectl -n agentes port-forward deploy/servidor-mcp 9000:9000
 ```
 
-**Terminal 2 — el agente investigador**
+Así `ui/servidor.py` sigue hablando a `localhost:7010`, `:7011` y `:9000` sin un
+solo cambio de código.
+
+**Terminal 2 — el relay de Hubble**
 
 ```bash
-.venv/bin/python malla/agente.py --rol investigador
+cilium hubble port-forward
 ```
 
-**Terminal 3 — el agente defensor**
-
-```bash
-.venv/bin/python malla/agente.py --rol defensor --puerto 7011
-```
-
-**Terminal 4 — la interfaz**
+**Terminal 3 — la interfaz**
 
 ```bash
 .venv/bin/python ui/servidor.py
@@ -181,15 +214,20 @@ kubectl -n agentes port-forward deploy/servidor-mcp 9000:9000
 
 Queda en `http://<host>:8080`.
 
-Si quieres trazas hacia el Collector, arranca los agentes con la variable
-puesta:
+### Las trazas ya no piden variable
+
+Con los agentes en el host había que arrancarlos con
+`OTEL_EXPORTER_OTLP_ENDPOINT=...` y acordarse cada vez. Ahora la variable está
+en el ConfigMap `endpoints` apuntando a `http://otel-collector:4318`, que es DNS
+del cluster: **los pods exportan solos y sin port-forward.**
+
+### Ver lo que dice un agente
+
+Los sobres A2A se siguen imprimiendo; ahora salen por los logs del pod:
 
 ```bash
-OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 .venv/bin/python malla/agente.py --rol investigador
+./malla/agentes-up.sh --logs investigador
 ```
-
-Y entonces hace falta una quinta terminal con el `port-forward` del Collector.
-Sin esa variable los agentes corren igual y no exportan nada.
 
 ---
 
@@ -197,7 +235,9 @@ Sin esa variable los agentes corren igual y no exportan nada.
 
 | Cambió | Qué hacer |
 |---|---|
-| `malla/agente.py` | Reiniciar las dos terminales de agentes |
+| `malla/agente.py` | `./malla/agentes-up.sh` — reconstruye la imagen y relanza los dos pods |
+| `malla/00-agentes.yaml` (sólo el ConfigMap) | `kubectl apply -f malla/00-agentes.yaml` y `kubectl -n agentes rollout restart deploy/investigador deploy/defensor` |
+| Se recreó el cluster, o cambió la IP del host | `./lab/publica-vllm.sh` — reescribe los Endpoints del Service `vllm` |
 | `malla/flujo.py`, `ui/servidor.py` | **Reiniciar la terminal de la interfaz.** Importa el flujo al arrancar; sin reiniciar, los pasos nuevos no salen y no da ningún error |
 | `ui/src/**` | `cd ui && npm run build`, y recargar el navegador |
 | `ui/package.json` | `npm install` antes del build |

@@ -148,6 +148,27 @@ def version_del_codigo() -> str:
 
 
 def leer_endpoint() -> tuple[str, str]:
+    """A donde esta el modelo y como se llama.
+
+    TRES FUENTES, EN ESTE ORDEN, Y EL ORDEN IMPORTA
+    ------------------------------------------------
+    1. Variables de entorno.   2. lab/endpoint.env.   3. Un default.
+
+    El entorno va PRIMERO porque el agente corre en dos sitios y solo uno de
+    ellos tiene el archivo:
+
+      - En el host (desarrollo) no hay variables, asi que gana endpoint.env,
+        que es lo que vllm-up.sh acaba de escribir. Igual que siempre.
+      - En un pod el archivo no existe, y sin esta precedencia se caia al
+        default `localhost:8000`, que dentro de un contenedor es EL PROPIO POD.
+        El sintoma seria un agente que no alcanza el modelo por una razon que
+        no se parece en nada a la causa.
+
+    En el cluster el valor lo pone el ConfigMap `endpoints` y apunta al Service
+    `vllm`, que no tiene selector: sus Endpoints los escribe
+    lab/publica-vllm.sh con la IP del host. Asi el pod llama a `http://vllm:8000`
+    sin saber que el modelo vive fuera del cluster.
+    """
     env = RAIZ / "lab" / "endpoint.env"
     v = {}
     if env.exists():
@@ -155,8 +176,13 @@ def leer_endpoint() -> tuple[str, str]:
             if "=" in linea and not linea.lstrip().startswith("#"):
                 k, _, val = linea.partition("=")
                 v[k.strip()] = val.strip()
-    return (v.get("OPENAI_BASE_URL_HOST", "http://localhost:8000/v1"),
-            v.get("MODEL", "Qwen/Qwen2.5-32B-Instruct-AWQ"))
+    base = (os.getenv("OPENAI_BASE_URL_HOST")
+            or v.get("OPENAI_BASE_URL_HOST")
+            or "http://localhost:8000/v1")
+    modelo = (os.getenv("MODEL")
+              or v.get("MODEL")
+              or "Qwen/Qwen2.5-32B-Instruct-AWQ")
+    return base, modelo
 
 
 def sobre(direccion: str, quien: str, cuerpo: dict):

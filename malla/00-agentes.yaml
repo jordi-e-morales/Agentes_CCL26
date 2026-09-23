@@ -1,0 +1,191 @@
+# Los dos agentes de la malla: un Deployment y un Service por cada uno.
+#
+# PATRON HEREDADO DE LA V1 (deploy/k8s/agentes.yaml)
+# --------------------------------------------------
+# Una sola imagen para los dos. Lo unico que cambia es el argumento `--rol`.
+# Eso ES el insight #1 de la sesion, hecho despliegue: mismos pesos, mismo
+# codigo, misma imagen. Prompt e identidad los hacen distintos.
+#
+# POR QUE ESTO NO ES OPCIONAL
+# ---------------------------
+# Corriendo en el host, el salto lateral investigador -> defensor era
+# localhost:7010 -> localhost:7011: nunca tocaba la red del cluster. Cilium no
+# tenia nada que gobernar y Hubble nada que dibujar. Como pods, esa arista pasa
+# a ser HTTP entre dos IPs de pod — visible y gobernable, que es literalmente el
+# argumento con el que el §3 descarta SLIM.
+#
+# LAS ETIQUETAS SON LA POLITICA
+# -----------------------------
+#   app: investigador | defensor   identifica a cada uno
+#   rol: agente                    lo que seleccionan Cilium y Tetragon
+#
+# `rol: agente` no es decorativa: es la que hace que cilium-l7.yaml y
+# tetragon-agentes-sin-exec.yaml apliquen a los agentes DE VERDAD y no a los
+# pods sustitutos de seguridad/00-pods-de-prueba.yaml.
+#
+# Aplicar (con la imagen ya cargada en kind):
+#   ./malla/agentes-up.sh
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: endpoints
+  namespace: agentes
+data:
+  # A donde habla cada agente. Son nombres de Service, que el DNS del cluster
+  # resuelve dentro del namespace.
+  #
+  # URL_DEFENSOR es la del salto lateral: agente.py la lee en
+  # consultar_al_vecino(). En el host no estaba definida y caia al default
+  # localhost:7011; aqui apunta al Service, y por eso el salto se convierte en
+  # una arista de red real.
+  URL_INVESTIGADOR: "http://investigador:7010"
+  URL_DEFENSOR: "http://defensor:7010"
+
+  # El servidor de herramientas. Una sola ruta para las seis: eso es el limite
+  # de la capa 7 que el segmento 6 tiene que enseñar.
+  URL_MCP: "http://servidor-mcp:9000/mcp"
+
+  # El motor de inferencia vive FUERA del cluster, en el host. `vllm` es un
+  # Service SIN selector: sus Endpoints los escribe lab/publica-vllm.sh con la
+  # IP del host, que cambia en cada reconstruccion del lab. El agente llama a
+  # un nombre de Service normal y no sabe que el modelo esta fuera.
+  OPENAI_BASE_URL_HOST: "http://vllm:8000/v1"
+  MODEL: "Qwen/Qwen2.5-32B-Instruct-AWQ"
+
+  # Trazas. Si esta variable falta, trazas.py devuelve un tracer de mentira y
+  # no se cae nada — pero tampoco hay cascada. Aqui esta puesta a proposito.
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4318"
+
+  # Rondas del debate. Cambiar esto y hacer `rollout restart` es mas rapido que
+  # reconstruir la imagen: las variables se leen al arrancar el contenedor.
+  RONDAS_DEBATE: "2"
+
+# ─── Investigador ────────────────────────────────────────────────────────────
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: investigador
+  namespace: agentes
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: investigador}
+  template:
+    metadata:
+      labels: {app: investigador, rol: agente}
+    spec:
+      # Ningun agente necesita hablar con la API de Kubernetes, y un agente
+      # comprometido no debe poder. Heredado de la v1 y vale la linea.
+      automountServiceAccountToken: false
+      containers:
+        - name: investigador
+          image: ccl26/agentes:dev
+          # Never: la imagen se carga con `kind load` y no existe en ningun
+          # registro. Sin esto el nodo intenta bajarla y falla con ErrImagePull.
+          imagePullPolicy: Never
+          args: ["--rol", "investigador"]
+          envFrom:
+            - configMapRef: {name: endpoints}
+          ports:
+            - {containerPort: 7010, name: a2a}
+          readinessProbe:
+            httpGet: {path: /salud, port: 7010}
+            periodSeconds: 5
+          resources:
+            requests: {cpu: 50m, memory: 128Mi}
+            limits: {memory: 512Mi}
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+          volumeMounts:
+            # Con readOnlyRootFilesystem no hay donde escribir nada. Algunas
+            # librerias esperan /tmp aunque no lo usemos; darselo cuesta nada y
+            # evita un CrashLoop que no se parece a su causa.
+            - {name: temporal, mountPath: /tmp}
+      volumes:
+        - name: temporal
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: investigador
+  namespace: agentes
+spec:
+  selector: {app: investigador}
+  ports:
+    - {port: 7010, targetPort: 7010}
+
+# ─── Defensor ────────────────────────────────────────────────────────────────
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: defensor
+  namespace: agentes
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: defensor}
+  template:
+    metadata:
+      labels: {app: defensor, rol: agente}
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: defensor
+          image: ccl26/agentes:dev
+          imagePullPolicy: Never
+          args: ["--rol", "defensor"]
+          envFrom:
+            - configMapRef: {name: endpoints}
+          ports:
+            - {containerPort: 7010, name: a2a}
+          readinessProbe:
+            httpGet: {path: /salud, port: 7010}
+            periodSeconds: 5
+          resources:
+            requests: {cpu: 50m, memory: 128Mi}
+            limits: {memory: 512Mi}
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+          volumeMounts:
+            - {name: temporal, mountPath: /tmp}
+      volumes:
+        - name: temporal
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: defensor
+  namespace: agentes
+spec:
+  selector: {app: defensor}
+  ports:
+    - {port: 7010, targetPort: 7010}
+
+# ─── vLLM, que corre en el HOST ──────────────────────────────────────────────
+# Service SIN selector: no hay pod detras. Sus Endpoints los escribe
+# lab/publica-vllm.sh con la IP del host, porque esa IP cambia cada vez que se
+# reconstruye el lab y no se puede teclear aqui.
+#
+# Patron tomado tal cual de la v1 (deploy/vllm-host/servicios.yaml). Lo que
+# compra: los agentes llaman a http://vllm:8000 como a cualquier otro Service.
+# Si mañana el modelo se mueve a un pod, no se toca ni una linea de los agentes.
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vllm
+  namespace: agentes
+spec:
+  ports:
+    - {port: 8000, targetPort: 8000}
