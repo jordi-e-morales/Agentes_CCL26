@@ -267,26 +267,51 @@ da resultados viejos, que es peor.
 
 ## Qué reiniciar cuando cambia algo
 
-| Cambió | Qué hacer |
-|---|---|
-| `malla/agente.py` | `./malla/agentes-up.sh` — reconstruye la imagen y relanza los dos pods |
-| `malla/00-agentes.yaml` (sólo el ConfigMap) | `kubectl apply -f malla/00-agentes.yaml` y `kubectl -n agentes rollout restart deploy/investigador deploy/defensor` |
-| Se recreó el cluster, o cambió la IP del host | `./lab/publica-vllm.sh` — reescribe los Endpoints del Service `vllm` |
-| `malla/flujo.py`, `ui/servidor.py` | **Reiniciar la terminal de la interfaz.** Importa el flujo al arrancar; sin reiniciar, los pasos nuevos no salen y no da ningún error |
-| `ui/src/**` | `cd ui && npm run build`, y recargar el navegador |
-| `ui/package.json` | `npm install` antes del build |
-| `herramientas/servidor_mcp.py` | `./herramientas/servidor-up.sh` |
-| Los `.sql` de `datos/` | `./datos/postgres-up.sh --reset` |
-| Políticas de `seguridad/` | `kubectl apply -f ...` |
-
-**Si vas a iterar sobre el frontend**, no compiles cada vez:
+**La respuesta corta, y sirve siempre:**
 
 ```bash
-cd ui && npm run dev
+./lab/reiniciar.sh
 ```
 
-Vite queda en el `5173` con recarga automática y manda `/api` al backend del
-`8080`. Eso **sí** es un servidor: Ctrl-C cuando termines.
+Reconstruye la imagen, relanza los tres pods, aplica las políticas, rehace los
+puentes y compila la interfaz. Al final te dice lo único que no puede hacer solo:
+reiniciar tu terminal de `ui/servidor.py`.
+
+Con `--rapido` se salta la imagen, que es lo que tarda.
+
+---
+
+### Y la tabla, para cuando quieras hacerlo a mano
+
+**Cada pieza se reinicia distinto, y ninguna avisa cuando corre código viejo.**
+Ése es el problema de fondo: un pod con la imagen vieja no falla, sirve lo de
+antes. Ya mordió cinco veces.
+
+| Cambiaste | Qué hay que hacer | Por qué |
+|---|---|---|
+| `malla/*.py` (agentes, flujo, orquestador) | `./malla/agentes-up.sh` | El código va **dentro de la imagen**. Sin reconstruir, los pods siguen con el anterior |
+| `herramientas/servidor_mcp.py` | `./herramientas/servidor-up.sh` | Igual: otra imagen |
+| `ui/servidor.py` | **Ctrl+C y relanzar esa terminal** | Python no recarga módulos solos |
+| `ui/src/**` | `cd ui && npm run build` + recargar navegador | Son estáticos, no tocan el backend |
+| `seguridad/*.yaml` | `kubectl apply -f ...` | En caliente, no reinicia nada |
+| `datos/*.sql` | `./datos/postgres-up.sh --reset` | |
+| Se reinició un pod | rehacer su `port-forward` | Los puentes mueren con el pod, **y no avisan** |
+| Se recreó el cluster | `./lab/publica-vllm.sh` | La IP del host cambió |
+
+### Las tres trampas que ya nos costaron tiempo
+
+1. **Un `port-forward` muerto parece un fallo de la aplicación.** La interfaz
+   dice *"no alcanzo al orquestador"* y el orquestador está perfecto.
+2. **Una política sin aplicar parece que los agentes están caídos.** El error es
+   *"ningún agente responde"* y lo que pasa es que la red corta la petición.
+3. **Una imagen vieja no da error.** Da resultados viejos. Por eso los pods
+   publican la huella de su código en `/salud` y `lab/diagnostico.sh` la compara.
+
+Cuando algo no cuadre y no sepas qué es:
+
+```bash
+bash lab/diagnostico.sh
+```
 
 ---
 
