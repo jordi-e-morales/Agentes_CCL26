@@ -163,7 +163,7 @@ kubectl -n "$NS" rollout status deploy/otel-collector --timeout=120s
 log "Que dice el Collector al arrancar"
 sleep 3
 kubectl -n "$NS" logs deploy/otel-collector -c collector --tail=25 2>/dev/null \
-  | grep -iE "error|splunk|otlphttp|exporter|started" | tail -8 | sed 's/^/  /'
+  | grep -iE "error|splunk|otlp_?http|exporter|started" | tail -8 | sed 's/^/  /'
 
 log "Como comprobarlo de verdad"
 echo ""
