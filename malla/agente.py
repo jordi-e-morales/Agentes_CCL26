@@ -70,6 +70,22 @@ ANCLAJE = (
     "sostengan esto'. Una postura honesta y sin material es correcta; "
     "inventarse fechas, historiales o coincidencias en listas es el peor "
     "error posible y arruina el trabajo del equipo.\n\n"
+    # LA REGLA TAMBIEN VALE PARA LO QUE ESCRIBES DENTRO DE UNA HERRAMIENTA.
+    #
+    # Medido el 2026-09-23: durante el debate el anclaje aguanto perfectamente,
+    # y se rompio justo en el argumento `justificacion` de dispone_caso, que
+    # afirmo "su perfil no presenta elementos de riesgo" cuando perfil_sujeto no
+    # se habia llamado en toda la corrida.
+    #
+    # Y ese es el peor sitio donde puede romperse: la prosa del debate se la
+    # lleva el viento, pero la justificacion QUEDA ESCRITA en la base. Es lo
+    # unico que un auditor va a leer mañana.
+    "ESTA REGLA SE APLICA IGUAL A LOS ARGUMENTOS QUE LE PASAS A UNA "
+    "HERRAMIENTA. Cuando escribas una justificacion, menciona SOLO herramientas "
+    "que hayas llamado en esta misma conversacion, y nombra cada una. Si no "
+    "consultaste el perfil, no digas nada sobre el perfil. Lo que escribes ahi "
+    "queda en el expediente y es lo unico que alguien leera despues: tiene que "
+    "poder rastrearse hasta una respuesta concreta.\n\n"
 )
 
 ROLES = {
@@ -522,8 +538,26 @@ def construir(rol: str, url_mcp: str) -> Starlette:
                                "consumo": del_vecino["consumo_del_vecino"],
                                "ronda": ronda + 1, "sobre": del_vecino["sobre_enviado"]})
 
-        texto = "\n\n".join(f"--- {t['agente']} (ronda {t['ronda']}) ---\n{t['texto']}"
-                            for t in turnos)
+        # EL TEXTO VA SIN CABECERAS, Y COSTO UNA CORRIDA ENTERA VERLO.
+        #
+        # Antes esto era:
+        #     f"--- {t['agente']} (ronda {t['ronda']}) ---\n{t['texto']}"
+        #
+        # Y producia dos problemas, los dos con la misma raiz: la cabecera
+        # quedaba DENTRO del texto, que es un dato, no una presentacion.
+        #
+        #   1. El defensor no tiene vecino, asi que su handler solo hace un
+        #      turno y siempre se etiquetaba "ronda 1". En pantalla salia
+        #      "--- defensor (ronda 1) ---" tambien en la ronda 2. Parecia un
+        #      bug del modelo y era nuestro.
+        #   2. Peor: ese texto vuelve por el salto lateral y entra en el
+        #      historial de la siguiente ronda. El modelo veia la cabecera en su
+        #      entrada y la reproducia en su salida.
+        #
+        # Quien necesita saber el agente y la ronda tiene `turnos` en metadata,
+        # que lleva los dos campos por separado. La interfaz los pinta desde
+        # ahi. Mezclar estructura con prosa es lo que causo las dos cosas.
+        texto = "\n\n".join(t["texto"].strip() for t in turnos)
         metadata = {"turnos": turnos,
                     # Se conservan por compatibilidad con lo que ya lee el flujo.
                     "herramientas_usadas": turnos[0]["herramientas_usadas"] if turnos else [],
