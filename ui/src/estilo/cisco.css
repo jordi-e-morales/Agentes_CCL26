@@ -138,15 +138,25 @@ pre.sobre {
  * ------------------------------------------------------------------------- */
 .columnas {
   display: grid;
-  /* El lateral era de 380px y la tabla de nvidia-smi (81 columnas) no cabia:
-   * habia que desplazarla para ver la utilizacion, que es justo el dato que se
-   * quiere enseñar. A 470px y con fuente reducida entra entera. */
-  /* TRES columnas desde el 2026-09-23: el rail de segmentos, el contenido, y
-   * el contexto. El rail es lo que convierte esto de "una corrida que se lee"
-   * en "una sesion que se presenta". */
-  grid-template-columns: 210px minmax(0, 1fr) 470px;
+  /* TRES columnas: el rail de segmentos, el contenido, y el contexto. El rail
+   * es lo que convierte esto de "una corrida que se lee" en "una sesion que se
+   * presenta".
+   *
+   * EL LATERAL Y LA TABLA DE nvidia-smi.
+   * La tabla son 91 columnas en el formato del driver 555 (el comentario
+   * decia 81, del formato viejo). Con el lateral a 380px no cabia y habia que
+   * desplazarla para ver la utilizacion, que es justo el dato que se quiere
+   * enseñar. El primer arreglo fue SUBIR la fuente, y era el arreglo
+   * equivocado: agrandaba la tabla dentro de un marco que seguia siendo
+   * estrecho. Lo que hacia falta era ensanchar el marco.
+   *
+   * A 580px y con la fuente mas pequeña entra entera, sin desplazar, y sobra
+   * sitio para la lista de procesos. */
+  grid-template-columns: 210px minmax(0, 1fr) 580px;
   gap: 28px;
-  max-width: 1480px;
+  /* Sube con el lateral: si no, los 110px extra se los quitaria a la columna
+   * del medio, que es donde ocurre la deliberacion. */
+  max-width: 1600px;
   margin: 0 auto;
   padding: 24px 28px 80px;
   align-items: start;
@@ -310,12 +320,30 @@ pre.sobre {
   border-left: 4px solid var(--bloqueo);
 }
 
-/* La tabla de nvidia-smi son 81 columnas fijas. Se ajusta el tamaño para que
- * entre entera en el lateral, en vez de obligar a desplazarla en medio de una
- * demostracion. Las cifras que importan van aparte y en grande. */
-.gpu-tabla {
-  font-size: 10px;
-  line-height: 1.3;
+/* 9px suena diminuto y no lo es AQUI: esta tabla no se lee, se RECONOCE. Nadie
+ * en la sala va a descifrar los encabezados; lo que tiene que ver es que es
+ * nvidia-smi de verdad y que hay un proceso ocupando la GPU.
+ *
+ * Las cifras que de verdad importan -utilizacion y memoria- van aparte y en
+ * grande, y esas si se leen a cuatro metros. */
+/* `pre.gpu-tabla`, NO `.gpu-tabla`. La especificidad importa aqui.
+ *
+ * Esta regla existia como `.gpu-tabla` (0,1,0) y perdia contra
+ * `pre.sobre` (0,1,1), que es la clase que el mismo elemento tambien lleva. O
+ * sea que el font-size de aqui NUNCA se aplico: la tabla se pintaba a 15px y
+ * desbordaba, y el max-height de pre.sobre la cortaba por abajo.
+ *
+ * Medido en el navegador el 2026-09-23: fuente computada 15px, contenido 854px
+ * dentro de un hueco de 515px. Antes de medir, el diagnostico fue "el marco es
+ * estrecho" y se intento arreglar subiendo la fuente — que empeoraba lo unico
+ * que estaba pasando de verdad.
+ *
+ * Tambien se suelta el max-height heredado: a 9px la tabla entera cabe, y
+ * cortarla por abajo escondia justo la lista de procesos. */
+pre.gpu-tabla {
+  font-size: 9px;
+  line-height: 1.25;
   overflow-x: auto;
   white-space: pre;
+  max-height: none;
 }
