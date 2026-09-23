@@ -50,6 +50,47 @@ kubectl -n "$NS" get pod -l rol=agente \
   2>/dev/null | sed 's/^/  /'
 
 echo ""
+echo "=== 2b. Huerfanos"
+# POD QUE SOBRA = NODO FANTASMA EN EL GRAFO DE HUBBLE.
+#
+# Van dos en dos dias: `agente-demo`, que era el sustituto de cuando los agentes
+# no eran pods, y `router`, que sobrevivio al renombrado porque `--down` borra lo
+# que esta en el manifiesto y el manifiesto ya decia `orquestador`.
+#
+# No rompen nada, y ese es el problema: se quedan corriendo, aparecen en el grafo
+# que se proyecta, y hay que explicar en vivo que son.
+# SE COMPARA POR LA ETIQUETA `app`, NO POR EL NOMBRE.
+#
+# El primer intento recortaba el sufijo del Deployment con una expresion
+# regular, y se comia parte del nombre: otel-collector-d85fcd6f-nd2z4 quedaba
+# en "otel" y se reportaba como huerfano. La etiqueta ya dice a que componente
+# pertenece el pod, sin adivinar nada.
+#
+# Un pod SIN etiqueta `app` tampoco es un error del script: es exactamente lo
+# que era agente-demo, y merece salir en la lista.
+ESPERADOS="orquestador investigador defensor servidor-mcp postgres otel-collector"
+sobra=""
+while read -r nombre app; do
+  [ -z "$nombre" ] && continue
+  if [ -z "$app" ] || ! echo "$ESPERADOS" | grep -qw "$app"; then
+    sobra="$sobra $nombre"
+  fi
+done <<EOF
+$(kubectl -n "$NS" get pod \
+  -o custom-columns=N:.metadata.name,A:.metadata.labels.app --no-headers 2>/dev/null \
+  | sed 's/<none>//')
+EOF
+if [ -n "$sobra" ]; then
+  mal "estos pods no son parte de la malla:"
+  for x in $sobra; do echo "        $x"; done
+  nota ""
+  nota "Apareceran en el grafo de Hubble como nodos que no sabras explicar."
+  nota "Para quitar uno:  kubectl -n $NS delete deploy <nombre>"
+else
+  ok "solo lo que tiene que estar"
+fi
+
+echo ""
 echo "=== 3. Los puentes que la interfaz necesita"
 # SOLO DOS, desde que el router es un pod.
 #
