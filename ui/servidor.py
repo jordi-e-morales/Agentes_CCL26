@@ -236,6 +236,122 @@ def causa_real(e: BaseException) -> str:
     return " / ".join(unicos[:3]) if unicos else type(e).__name__
 
 
+# ---------------------------------------------------------------------------
+# EL AGENTE NUEVO, Y LO QUE UNA ETIQUETA CONCEDE.
+#
+# El guion del segmento 6, en tres botones:
+#
+#   1. El redactor intenta LEER la alerta        -> la red lo corta
+#   2. Le pones `rol: agente`                    -> lee, y ademas puede todo
+#   3. Se la quitas                              -> vuelve a estar fuera
+#
+# Va por botones y no por terminal porque alt-tabear en medio de la sesion es
+# friccion, y porque cada boton enseña el kubectl que ejecuta: la regla 2 dice
+# que la interfaz hace visible el mecanismo, no que lo esconda.
+# ---------------------------------------------------------------------------
+
+# Lo que el redactor intenta hacer: leer la alerta que tiene que resumir.
+# Es una llamada a herramienta normal y corriente, la misma que hace el
+# investigador en cada ronda.
+INTENTO_REDACTOR = """
+import asyncio, sys
+from mcp import Client
+
+def causa(e, hondo=0):
+    sub = getattr(e, 'exceptions', None)
+    if sub and hondo < 4:
+        return causa(sub[0], hondo + 1)
+    t = str(e).strip()
+    return type(e).__name__ + (': ' + t if t else '')
+
+async def main():
+    try:
+        async with Client('http://servidor-mcp:9000/mcp') as c:
+            r = await c.call_tool('contexto_alerta', {'alerta_id': 'ALR-FICTICIA-0001'})
+            n = len(getattr(r, 'content', []) or [])
+            print('LEYO la alerta: ' + str(n) + ' bloque(s) de contexto')
+    except Exception as e:
+        print('NO PUDO: ' + causa(e))
+
+asyncio.run(main())
+"""
+
+
+async def redactor(req):
+    """Despliega, consulta, etiqueta y desetiqueta al agente nuevo."""
+    async def kubectl(*args, espera=30):
+        proc = await asyncio.create_subprocess_exec(
+            "kubectl", "-n", "agentes", *args,
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
+        out, _ = await asyncio.wait_for(proc.communicate(), timeout=espera)
+        return out.decode(errors="replace").strip()
+
+    accion = req.query_params.get("accion", "estado")
+
+    # El estado actual: existe? tiene la etiqueta?
+    if accion == "estado":
+        crudo = await kubectl("get", "pod", "-l", "app=redactor",
+                              "-o", "custom-columns=N:.metadata.name,"
+                                    "R:.metadata.labels.rol,L:.status.containerStatuses[0].ready",
+                              "--no-headers")
+        if not crudo or "No resources" in crudo:
+            return JSONResponse({"existe": False})
+        partes = crudo.split()
+        return JSONResponse({
+            "existe": True,
+            "pod": partes[0] if partes else None,
+            # kubectl escribe <none> cuando la etiqueta no esta.
+            "etiquetado": len(partes) > 1 and partes[1] not in ("<none>", ""),
+            "listo": partes[-1] == "true" if partes else False,
+        })
+
+    if accion == "intenta":
+        salida = await kubectl("exec", "deploy/redactor", "--",
+                               "python3", "-c", INTENTO_REDACTOR, espera=40)
+        return JSONResponse({
+            "comando": "kubectl -n agentes exec deploy/redactor -- python3 "
+                       "(llama a contexto_alerta por MCP)",
+            "salida": salida,
+            # La palabra que la interfaz usa para pintarlo de rojo o verde.
+            "logro": "LEYO" in salida,
+        })
+
+    if accion in ("etiqueta", "desetiqueta"):
+        poner = accion == "etiqueta"
+        # SE ETIQUETA EL POD, NO EL DEPLOYMENT, y por dos razones.
+        #
+        # 1. VELOCIDAD. Tocar el Deployment cambia la plantilla y lanza un
+        #    rollout: pod nuevo, diez segundos de espera. En vivo, y dos veces,
+        #    eso es una eternidad. Etiquetar el pod surte efecto al instante —
+        #    Cilium recalcula su identidad en cuanto cambia la etiqueta.
+        #
+        # 2. IDEMPOTENCIA. La plantilla se queda SIN la etiqueta, asi que si el
+        #    pod se reinicia vuelve solo al estado "antes". El §10 pide que lo
+        #    que se enseñe se pueda repetir sin restaurar nada, y asi se cumple
+        #    sin hacer nada.
+        #
+        # Lo que se dice en la sala: en un despliegue de verdad esta etiqueta
+        # estaria en el YAML. Aqui se pone a mano para poder enseñar las dos
+        # caras en diez segundos.
+        crudo = await kubectl("get", "pod", "-l", "app=redactor",
+                              "-o", "name", "--no-headers")
+        pod = crudo.splitlines()[0].strip() if crudo.strip() else ""
+        if not pod:
+            return JSONResponse({"error": "no encuentro el pod del redactor"},
+                                status_code=404)
+        arg = "rol=agente" if poner else "rol-"
+        # --overwrite para que volver a ponerla no falle si ya estaba.
+        salida = await kubectl("label", "--overwrite", pod, arg)
+        return JSONResponse({
+            "comando": f"kubectl -n agentes label {pod} {arg}",
+            "salida": salida,
+            "etiquetado": poner,
+        })
+
+    return JSONResponse({"error": f"accion desconocida: {accion}"},
+                        status_code=400)
+
+
 async def modelo(_req):
     """EL MODELO. Uno solo, y es el que sostiene a los tres agentes.
 
@@ -670,6 +786,7 @@ rutas = [
     Route("/api/eventos-kernel", eventos_kernel),
     Route("/api/hubble", hubble),
     Route("/api/modelo", modelo),
+    Route("/api/redactor", redactor),
     Route("/api/trazas", trazas_recientes),
     Route("/api/prompts", prompts),
     Route("/api/agentes", agentes),

@@ -68,7 +68,7 @@ echo "=== 2b. Huerfanos"
 #
 # Un pod SIN etiqueta `app` tampoco es un error del script: es exactamente lo
 # que era agente-demo, y merece salir en la lista.
-ESPERADOS="orquestador investigador defensor servidor-mcp postgres otel-collector"
+ESPERADOS="orquestador investigador defensor redactor servidor-mcp postgres otel-collector"
 # Los de seguridad/00-pods-de-prueba.yaml. NO son huerfanos: existen a proposito
 # para las pruebas de politica, y servicio-demo en particular hace de "cualquier
 # cosa que corra en tu cluster" porque NO lleva rol=agente.

@@ -233,6 +233,9 @@ export default function App() {
         {/* Segmento 6: tampoco necesita corrida, y ese es el punto. */}
         {segmento === 6 && (
           <>
+            {/* El agente nuevo va PRIMERO: es lo unico del segmento que se
+                opera en vivo. Los dos paneles de abajo son observacion. */}
+            <Redactor />
             <Kernel activo={corriendo} corridaId={corridaId} />
             <Red activo={corriendo} corridaId={corridaId} />
           </>
@@ -1198,6 +1201,148 @@ function Modelo() {
 {d.medidas.join("\n")}
               </pre>
             </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+/* EL AGENTE NUEVO. El momento en vivo del segmento 6.
+ *
+ * "Queremos que un agente redacte el resumen del caso para el analista." Es la
+ * peticion mas inocente que existe. El redactor solo necesita LEER la alerta, y
+ * no puede — porque no lleva la etiqueta `rol: agente`, y el servidor de
+ * herramientas solo acepta entrada de quien la lleva.
+ *
+ * Le pones la etiqueta, lee. Y de paso puede cerrar casos, porque las seis
+ * herramientas viajan por la misma ruta y la red no sabe distinguirlas.
+ *
+ * Cada boton enseña el kubectl que ejecuta: regla 2, la interfaz hace visible
+ * el mecanismo. Un boton que hace magia seria mas bonito y contrario al
+ * proposito.
+ */
+function Redactor() {
+  const [estado, setEstado] = useState<any>(null);
+  const [salida, setSalida] = useState<any>(null);
+  const [ocupado, setOcupado] = useState<string | null>(null);
+
+  async function leerEstado() {
+    try {
+      const r = await fetch("/api/redactor?accion=estado");
+      setEstado(await r.json());
+    } catch { setEstado({ existe: false }); }
+  }
+  useEffect(() => { leerEstado(); }, []);
+
+  async function accionar(accion: string, etiqueta: string) {
+    setOcupado(etiqueta);
+    setSalida(null);
+    try {
+      const r = await fetch(`/api/redactor?accion=${accion}`);
+      const d = await r.json();
+      setSalida(d);
+      await leerEstado();
+    } catch (e) {
+      setSalida({ salida: String(e) });
+    } finally {
+      setOcupado(null);
+    }
+  }
+
+  const boton = (accion: string, texto: string, destacado = false) => (
+    <button
+      onClick={() => accionar(accion, texto)}
+      disabled={ocupado !== null || !estado?.existe}
+      style={{
+        background: destacado ? "var(--cisco-cian)" : "var(--panel-alto)",
+        color: destacado ? "var(--cisco-marino)" : "var(--texto)",
+        border: "1px solid var(--borde)", borderRadius: "var(--radio)",
+        padding: "10px 16px", fontSize: "var(--texto-chico)", fontWeight: 600,
+        fontFamily: "var(--fuente)",
+        cursor: ocupado ? "wait" : "pointer",
+        opacity: ocupado && ocupado !== texto ? 0.5 : 1,
+      }}
+    >
+      {ocupado === texto ? "…" : texto}
+    </button>
+  );
+
+  return (
+    <div className="panel">
+      <div style={{ fontWeight: 600 }}>
+        Un agente nuevo entra a la malla
+        <Info>
+          El redactor sale de la <strong>misma imagen</strong> que los otros
+          tres y sólo quiere leer la alerta para resumirla. Lo único que le
+          falta es la etiqueta <code>rol: agente</code> — y el servidor de
+          herramientas sólo acepta entrada de quien la lleva. La protección está
+          en el recurso, no en quien llama.
+        </Info>
+      </div>
+
+      {!estado && (
+        <p className="tenue" style={{ fontSize: 13, margin: "6px 0 0" }}>consultando…</p>
+      )}
+      {estado && !estado.existe && (
+        <p className="tenue" style={{ fontSize: 13, margin: "6px 0 0" }}>
+          el redactor no está desplegado — <code>./malla/agentes-up.sh</code>
+        </p>
+      )}
+
+      {estado?.existe && (
+        <>
+          {/* El estado actual, grande. Es lo que hay que mirar antes y despues
+              de cada boton. */}
+          <div style={{
+            marginTop: 10, padding: "10px 14px", borderRadius: 6,
+            background: estado.etiquetado ? "#10331A" : "var(--fondo)",
+            border: `1px solid ${estado.etiquetado ? "var(--ok)" : "var(--borde)"}`,
+            fontFamily: "var(--fuente-mono)", fontSize: 13,
+          }}>
+            {estado.pod}{"  "}
+            <strong style={{ color: estado.etiquetado ? "var(--ok)" : "var(--texto-tenue)" }}>
+              {estado.etiquetado ? "rol=agente" : "sin rol"}
+            </strong>
+          </div>
+
+          <div style={{ display: "flex", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
+            {boton("intenta", "Intentar leer la alerta", true)}
+            {estado.etiquetado
+              ? boton("desetiqueta", "Quitarle la etiqueta")
+              : boton("etiqueta", "Ponerle rol=agente")}
+          </div>
+
+          {salida && (
+            <>
+              {salida.comando && (
+                <div className="tenue" style={{
+                  fontSize: 12, marginTop: 12, fontFamily: "var(--fuente-mono)",
+                }}>
+                  $ {salida.comando}
+                </div>
+              )}
+              <pre className="sobre mono" style={{
+                fontSize: 12,
+                borderLeftColor: salida.logro === false ? "var(--bloqueo)"
+                               : salida.logro === true ? "var(--ok)"
+                               : "var(--cisco-cian)",
+              }}>{salida.salida || "(sin salida)"}</pre>
+            </>
+          )}
+
+          {/* El remate, y solo cuando ya paso: decirlo antes seria contar el
+              final. Regla 3: la diferencia se resalta cuando aparece. */}
+          {estado.etiquetado && (
+            <p className="suave" style={{
+              fontSize: "var(--texto-chico)", margin: "10px 0 0",
+              borderLeft: "3px solid var(--bloqueo)", paddingLeft: 12,
+            }}>
+              Pediste que pudiera <strong>leer</strong>. Le concediste las{" "}
+              <strong>seis herramientas</strong>, incluidas <code>dispone_caso</code>{" "}
+              y <code>exporta_evidencia</code>. La red no puede darle unas y
+              negarle otras: todas viajan por el mismo <code>POST /mcp</code>.
+            </p>
           )}
         </>
       )}

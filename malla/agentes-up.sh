@@ -29,6 +29,7 @@ log() { echo ""; echo "=== $1"; }
 case "${1:-}" in
   --logs) exec kubectl -n "$NS" logs -f "deploy/${2:-investigador}" ;;
   --down) kubectl -n "$NS" delete -f "$DIR/00-agentes.yaml" --ignore-not-found
+          kubectl -n "$NS" delete -f "$DIR/00-redactor.yaml" --ignore-not-found
           # La politica y el EndpointSlice de vLLM los genera publica-vllm.sh,
           # asi que no estan en el manifiesto y hay que nombrarlos aqui.
           kubectl -n "$NS" delete ciliumnetworkpolicy agentes-vllm-host \
@@ -48,14 +49,21 @@ docker build -q -t "$IMAGEN" -f "$DIR/Dockerfile" "$RAIZ"
 log "Metiendo la imagen al cluster de kind"
 kind load docker-image "$IMAGEN" --name "$CLUSTER"
 
-log "Desplegando el router y los dos agentes"
+log "Desplegando el orquestador, los dos agentes y el redactor"
 kubectl apply -f "$DIR/00-agentes.yaml" >/dev/null
+
+# El redactor: el agente nuevo del segmento 6. Se despliega SIN la etiqueta
+# `rol: agente`, que es toda la demostracion. Asi el "antes" ya es verdad cuando
+# llegas a ese segmento, sin esperar a que arranque un pod en vivo.
+kubectl apply -f "$DIR/00-redactor.yaml" >/dev/null
 
 # Pods nuevos con la imagen recien cargada: sin esto seguirian con la vieja.
 # Este es el desfase que ya nos mordio tres veces (§9 del CLAUDE.md).
 kubectl -n "$NS" rollout restart \
-  deploy/orquestador deploy/investigador deploy/defensor >/dev/null
-for d in router investigador defensor; do
+  deploy/orquestador deploy/investigador deploy/defensor deploy/redactor >/dev/null
+# Quedaba "router" aqui despues del renombrado, y sobrevivio porque el
+# Deployment viejo seguia existiendo. Al borrarlo, este bucle habria fallado.
+for d in orquestador investigador defensor redactor; do
   kubectl -n "$NS" rollout status "deploy/$d" --timeout=180s
 done
 
@@ -76,7 +84,7 @@ log "Publicando vLLM dentro del cluster"
 # sistema que parece sano y no funciona.
 log "Comprobando las politicas de red"
 faltan=""
-for pol in agentes-salida router-descubrimiento; do
+for pol in agentes-salida orquestador-descubrimiento; do
   kubectl -n "$NS" get ciliumnetworkpolicy "$pol" >/dev/null 2>&1 || faltan="$faltan $pol"
 done
 if [ -n "$faltan" ]; then
@@ -108,6 +116,11 @@ print(json.load(urllib.request.urlopen('http://localhost:$2/salud', timeout=5)))
 comprobar orquestador 7012
 comprobar investigador 7010
 comprobar defensor 7010
+# El redactor no sirve HTTP: solo espera despierto. Lo que importa de el es su
+# ETIQUETA, o mejor dicho su AUSENCIA — ahi esta el demo entero.
+rol=$(kubectl -n "$NS" get pod -l app=redactor \
+  -o jsonpath='{.items[0].metadata.labels.rol}' 2>/dev/null)
+echo "  redactor: ${rol:-SIN rol=agente}  <- asi tiene que empezar"
 
 log "Las aristas que ahora SI atraviesan el cluster"
 echo "  orquestador -> agentes             GET /.well-known/agent-card.json  <-- descubrir"
@@ -125,5 +138,5 @@ echo ""
 echo "    kubectl -n $NS port-forward deploy/orquestador 7012:7012"
 echo ""
 echo "  Los de investigador y defensor YA NO HACEN FALTA: quien les habla es el"
-echo "  router, desde dentro del cluster. Si los dejas puestos no estorban, pero"
+echo "  orquestador, desde dentro del cluster. Si los dejas puestos no estorban,"
 echo "  tampoco sirven."

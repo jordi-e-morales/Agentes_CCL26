@@ -1,0 +1,76 @@
+# EL AGENTE NUEVO. El que alguien despliega el martes por la mañana.
+#
+# QUE CUENTA
+# ----------
+# "Queremos que un agente redacte el resumen del caso para el analista humano."
+# Es la peticion mas inocente que existe: todo el mundo en la sala la ha hecho o
+# la ha recibido. Nadie la discute, y por eso funciona como demo.
+#
+# Necesita LEER la alerta para poder resumirla. Nada mas. Y no puede.
+#
+# POR QUE NO PUEDE, Y DONDE SE DECIDE
+# ------------------------------------
+# Fijate en lo que NO lleva este manifiesto: la etiqueta `rol: agente`.
+#
+# Su salida esta abierta -ninguna politica lo selecciona- asi que el redactor no
+# esta encerrado. Lo que pasa es que el servidor de herramientas solo acepta
+# entrada de `rol: agente` (seguridad/cilium-l7.yaml). La proteccion esta en el
+# RECURSO, no en quien llama.
+#
+# Eso es mas fuerte que bloquear al pod malo: no hace falta anticipar quien va a
+# aparecer manana en el namespace.
+#
+# Y EL REMATE
+# -----------
+# Le pones la etiqueta y funciona. Ya puede leer y redactar su informe.
+# Y de paso puede cerrar casos, porque las seis herramientas viajan por la misma
+# ruta y la red no sabe distinguirlas.
+#
+#   lo que pediste:    leer la alerta
+#   lo que concediste: las seis, incluida dispone_caso
+#   lo que hiciste:    añadir una linea a un YAML
+#
+# Se despliega con los demas y se queda SIN etiqueta. Asi el "antes" ya es
+# verdad cuando llegas al segmento 6, sin esperar a que arranque un pod.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redactor
+  namespace: agentes
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: redactor}
+  template:
+    metadata:
+      # SIN `rol: agente`. Esa ausencia es la demostracion entera.
+      labels: {app: redactor}
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: redactor
+          # La MISMA imagen que los otros tres. No es un pod de mentira: tiene
+          # el mismo codigo y las mismas librerias. Lo unico que le falta es la
+          # etiqueta.
+          image: ccl26/agentes:dev
+          imagePullPolicy: Never
+          # Espera despierto, sin lanzar ningun proceso. Se hace con python y no
+          # con `sleep` a proposito: cuando le pongas la etiqueta, la
+          # TracingPolicy de Tetragon empieza a matar lo que python ejecute, y
+          # un `sleep` en bucle seria lo primero en caer — un susto innecesario
+          # en medio de la demo.
+          command: ["python", "-c", "import time; time.sleep(10**9)"]
+          resources:
+            requests: {cpu: 20m, memory: 64Mi}
+            limits: {memory: 256Mi}
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: ["ALL"]}
+          volumeMounts:
+            - {name: temporal, mountPath: /tmp}
+      volumes:
+        - name: temporal
+          emptyDir: {}
