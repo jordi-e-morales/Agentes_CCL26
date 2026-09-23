@@ -1331,19 +1331,6 @@ function Redactor() {
             </>
           )}
 
-          {/* El remate, y solo cuando ya paso: decirlo antes seria contar el
-              final. Regla 3: la diferencia se resalta cuando aparece. */}
-          {estado.etiquetado && (
-            <p className="suave" style={{
-              fontSize: "var(--texto-chico)", margin: "10px 0 0",
-              borderLeft: "3px solid var(--bloqueo)", paddingLeft: 12,
-            }}>
-              Pediste que pudiera <strong>leer</strong>. Le concediste las{" "}
-              <strong>seis herramientas</strong>, incluidas <code>dispone_caso</code>{" "}
-              y <code>exporta_evidencia</code>. La red no puede darle unas y
-              negarle otras: todas viajan por el mismo <code>POST /mcp</code>.
-            </p>
-          )}
         </>
       )}
     </div>

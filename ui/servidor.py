@@ -254,7 +254,7 @@ def causa_real(e: BaseException) -> str:
 # Es una llamada a herramienta normal y corriente, la misma que hace el
 # investigador en cada ronda.
 INTENTO_REDACTOR = """
-import asyncio, sys
+import asyncio, json
 from mcp import Client
 
 def causa(e, hondo=0):
@@ -268,8 +268,20 @@ async def main():
     try:
         async with Client('http://servidor-mcp:9000/mcp') as c:
             r = await c.call_tool('contexto_alerta', {'alerta_id': 'ALR-FICTICIA-0001'})
-            n = len(getattr(r, 'content', []) or [])
-            print('LEYO la alerta: ' + str(n) + ' bloque(s) de contexto')
+            # SE IMPRIME LO QUE DEVOLVIO, EN CRUDO.
+            #
+            # Decir "leyo 3 bloques" obliga a creerse el resumen. Enseñar la
+            # respuesta deja ver lo que de verdad se llevo — incluido el
+            # source_trust de cada fragmento, que es de donde sale el ataque del
+            # segmento 6.
+            datos = getattr(r, 'structured_content', None)
+            if datos:
+                cuerpo = json.dumps(datos, indent=2, ensure_ascii=False)
+            else:
+                cuerpo = '\n'.join(
+                    getattr(b, 'text', str(b)) for b in (getattr(r, 'content', []) or []))
+            print('LEYO la alerta:')
+            print(cuerpo[:2500])
     except Exception as e:
         print('NO PUDO: ' + causa(e))
 
