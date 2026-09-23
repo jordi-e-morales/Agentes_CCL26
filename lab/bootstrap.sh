@@ -190,15 +190,40 @@ fi
 #   hubble  -> consulta el trafico que Cilium esta viendo
 # Instalar uno no instala el otro. Y hubble es el que te deja VER los bloqueos,
 # que es la mitad de la demo.
+#
+# VERSION FIJA, y la razon no es la que parece.
+# ---------------------------------------------
+# Antes esto seguia a stable.txt, o sea "lo mas nuevo que haya el dia que
+# corras el script". Eso es justo lo que un artefacto de migracion no puede
+# hacer: dos maquinas instaladas en dias distintos quedan distintas.
+#
+# El aviso que la CLI imprime al arrancar NO se arregla con esto:
+#
+#   hubble-cli-version=1.19.4  hubble-relay-version=1.20.1
+#   "API compatibility is not guaranteed"
+#
+# Comprobado el 2026-09-23: la ultima release de cilium/hubble ES la v1.19.4.
+# No hay ninguna CLI de la linea 1.20, asi que no existe version que empareje
+# con el relay. El desajuste es de origen y hay que convivir con el.
+#
+# Lo que se gana fijando es que la combinacion 1.19.4 + Cilium 1.20.1 esta
+# VERIFICADA funcionando aqui, y la instancia nueva va a recibir esa misma y no
+# otra. Si un dia rompe de verdad, la salida es bajar Cilium a la linea 1.19,
+# no subir la CLI.
+HUBBLE_CLI=v1.19.4
 if ! command -v hubble >/dev/null 2>&1; then
-  log "Instalando la CLI de Hubble"
-  HVER="$(curl -s https://raw.githubusercontent.com/cilium/hubble/master/stable.txt)"
+  log "Instalando la CLI de Hubble ($HUBBLE_CLI)"
   curl -sL --fail --remote-name-all \
-    "https://github.com/cilium/hubble/releases/download/${HVER}/hubble-linux-amd64.tar.gz"
+    "https://github.com/cilium/hubble/releases/download/${HUBBLE_CLI}/hubble-linux-amd64.tar.gz"
   sudo tar xzf hubble-linux-amd64.tar.gz -C /usr/local/bin
   rm -f hubble-linux-amd64.tar.gz
 else
-  log "La CLI de Hubble ya estaba instalada"
+  instalada="$(hubble version 2>/dev/null | grep -o 'v[0-9.]*' | head -1)"
+  log "La CLI de Hubble ya estaba instalada (${instalada:-?})"
+  if [ -n "$instalada" ] && [ "$instalada" != "$HUBBLE_CLI" ]; then
+    echo "  OJO: se esperaba $HUBBLE_CLI. Para igualar:"
+    echo "    sudo rm -f /usr/local/bin/hubble && ./lab/bootstrap.sh"
+  fi
 fi
 
 # ---------------------------------------------------------------------------

@@ -473,13 +473,39 @@ y en la UI ese contenido se renderiza distinto.
 seguridad son reales. Si algo no se puede probar de verdad, se deja pendiente,
 no se finge.
 
-**Un solo host Linux con el L40S.** Ya no hay VM local ni split sin-GPU. La
-reserva actual termina el 2026-09-23 y después hay que migrar a la instancia
-que llega al día del evento.
+**Un solo host Linux con el L40S.** Ya no hay VM local ni split sin-GPU. Hay que
+migrar a la instancia que llega al día del evento.
 
 `lab/bootstrap.sh` es el artefacto portable, y esa migración es su prueba real:
 si migrar no es `git clone && ./bootstrap.sh`, el script está incompleto. Todo
 cambio de entorno se escribe ahí el mismo día, nunca solo se teclea.
+
+**Los dos labs corren en paralelo** (confirmado el 2026-09-23: el actual dura
+dos días más). Eso cambia la migración de salto al vacío a comparación:
+`bootstrap.sh` se corre en la instancia nueva mientras esta sigue funcionando,
+y cualquier diferencia se ve contra un sistema que sí anda. **No apagar el lab
+viejo hasta que el nuevo pase `lab/estado.sh` completo.**
+
+### Las versiones están fijas, y esa es la razón
+
+`bootstrap.sh` seguía `stable.txt` para las CLIs, o sea *"lo más nuevo que haya
+el día que corras el script"*. Con dos máquinas instaladas en días distintos eso
+da dos entornos distintos, que es exactamente lo que un artefacto de migración
+no puede hacer. Fijado el 2026-09-23:
+
+| Pieza | Versión | Dónde |
+|---|---|---|
+| Cilium (y con él el relay de Hubble) | `1.20.1` | `lab/cluster-up.sh` |
+| CLI de Hubble | `v1.19.4` | `lab/bootstrap.sh` |
+| vLLM | `v0.6.6.post1` | `lab/vllm-up.sh` |
+| Collector de OTel | `0.161.0` | `observabilidad/00-collector.yaml` |
+
+**La CLI de Hubble y el relay no emparejan, y no se puede arreglar.** La CLI
+avisa al arrancar (`API compatibility is not guaranteed`) porque va por la
+1.19.4 y el relay por la 1.20.1. Comprobado: **la 1.19.4 es la última release
+que existe** de `cilium/hubble`; no hay línea 1.20 de la CLI. Si algún día rompe
+de verdad, la salida es bajar Cilium a la línea 1.19, no subir la CLI. Mientras
+tanto el aviso es ruido y esta combinación está verificada.
 
 ### El driver es el techo, y no se puede mover
 

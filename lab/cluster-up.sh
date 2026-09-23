@@ -21,7 +21,22 @@ else
   kind create cluster --name "$CLUSTER" --config "$DIR/kind-cluster.yaml"
 fi
 
-log "Instalando Cilium como red del cluster"
+# LA VERSION DE CILIUM, FIJA.
+#
+# `cilium install` sin --version instala lo que la CLI traiga por default ese
+# dia. Eso convierte a este script en algo que da un cluster distinto cada
+# semana, y el §8 pide lo contrario: que migrar sea `git clone && bootstrap`.
+#
+# 1.20.1 es la que esta verificada funcionando aqui el 2026-09-23, con toda la
+# cadena encima: politicas L7, Hubble, el 403 y el SIGKILL.
+#
+# Esta version tambien es la que fija el relay de Hubble, y por tanto el
+# desajuste con la CLI (que va por la 1.19.4, la ultima que existe). Si ese
+# desajuste alguna vez rompe de verdad, la salida es bajar ESTE numero a la
+# linea 1.19 — no subir la CLI, porque no hay a donde.
+CILIUM_VER=1.20.1
+
+log "Instalando Cilium $CILIUM_VER como red del cluster"
 # kubeProxyReplacement=true: Cilium reemplaza a kube-proxy usando eBPF.
 # hubble: es el sistema de observabilidad. Sin esto no puedes VER el trafico,
 #         y ver el trafico es la mitad de la demo.
@@ -50,6 +65,7 @@ IDLE_ENVOY=1800
 BUFFER_HUBBLE=65535
 if ! cilium status >/dev/null 2>&1; then
   cilium install \
+    --version "$CILIUM_VER" \
     --set kubeProxyReplacement=true \
     --set hubble.enabled=true \
     --set hubble.relay.enabled=true \
@@ -57,7 +73,14 @@ if ! cilium status >/dev/null 2>&1; then
     --set hubble.eventBufferCapacity=$BUFFER_HUBBLE \
     --set envoy.streamIdleTimeoutDurationSeconds=$IDLE_ENVOY
 else
-  echo "Cilium ya estaba instalado"
+  instalado=$(cilium version --client=false 2>/dev/null \
+    | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+  echo "Cilium ya estaba instalado (${instalado:-version desconocida})"
+  if [ -n "$instalado" ] && [ "$instalado" != "$CILIUM_VER" ]; then
+    echo "  OJO: este script fija $CILIUM_VER. No se reinstala sobre un"
+    echo "       cluster vivo. Para igualar hay que recrearlo:"
+    echo "         kind delete cluster --name agentes && ./lab/cluster-up.sh"
+  fi
   # Clusters creados antes de este ajuste: aplicarlo sin reinstalar.
   # `cilium config set` cambia el ConfigMap y reinicia los pods de Cilium.
   actual=$(kubectl -n kube-system get configmap cilium-config \
