@@ -278,6 +278,24 @@ spec:
 3. **La identidad son las etiquetas, no el nombre ni la IP.** `rol: agente` es lo
    que Cilium mira. Cambiarle una etiqueta a un pod lo convierte, para la red, en
    otra cosa — y eso se puede demostrar en vivo con el redactor.
+
+   **Y se ve con un número.** Hubble muestra la identidad numérica de cada
+   extremo. Antes de etiquetar es una; después, otra:
+
+   ```
+   antes:    identity = 61372   redactor   app=redactor
+   después:  identity = <otra>  redactor   app=redactor, rol=agente
+   ```
+
+   Mismo pod, mismo nombre, misma imagen. **Otra identidad.** Es el insight #1
+   llevado hasta la red: lo que distingue dos cargas de trabajo no es qué son,
+   es cómo están etiquetadas.
+
+   *Efecto de escenario:* durante unos minutos Hubble enseña las dos, porque su
+   búfer guarda historia. No es un fallo — es la prueba de que cambió. Si
+   prefieres una imagen limpia, filtra por `workload = redactor` (que sobrevive
+   al cambio) y mira las filas por hora; el filtro por `identity` se queda
+   obsoleto en cuanto etiquetas.
 4. **Lo que no está escrito es tan política como lo que sí.** No hay regla
    agente→Postgres, y esa ausencia es lo que impide que un agente comprometido
    llegue a la base.
