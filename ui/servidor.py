@@ -253,7 +253,18 @@ def causa_real(e: BaseException) -> str:
 # Lo que el redactor intenta hacer: leer la alerta que tiene que resumir.
 # Es una llamada a herramienta normal y corriente, la misma que hace el
 # investigador en cada ronda.
-INTENTO_REDACTOR = """
+# CADENA CRUDA (r"""), y no es un detalle de estilo.
+#
+# Dentro de un """...""" normal, Python interpreta las secuencias de escape AL
+# PARSEAR ESTE ARCHIVO. Asi que el '\n' que escribimos para unir bloques se
+# convertia en un salto de linea REAL, y al pod le llegaba el codigo partido:
+#
+#     cuerpo = '
+#     '.join(...)          ->  SyntaxError: unterminated string literal
+#
+# Con r""" el texto viaja tal cual se escribe, que es lo que hace falta cuando
+# lo que hay dentro es codigo para otro interprete.
+INTENTO_REDACTOR = r"""
 import asyncio, json
 from mcp import Client
 
@@ -287,6 +298,18 @@ async def main():
 
 asyncio.run(main())
 """
+
+
+# Se comprueba AL ARRANCAR, no cuando alguien pulsa el boton.
+#
+# Este texto es codigo para otro interprete, asi que ningun linter lo mira y
+# ningun import lo valida. Sin esto, un error de sintaxis aqui espera
+# tranquilamente hasta la mitad del segmento 6 para aparecer.
+try:
+    compile(INTENTO_REDACTOR, "<intento-redactor>", "exec")
+except SyntaxError as _e:
+    print(f"!! INTENTO_REDACTOR no compila (linea {_e.lineno}): {_e.msg}")
+    print("   El boton del segmento 6 va a fallar. Arreglalo antes de demostrar.")
 
 
 async def redactor(req):
