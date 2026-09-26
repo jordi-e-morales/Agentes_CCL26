@@ -132,6 +132,23 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+titulo "El redactor, listo para el segmento 6"
+# La demo consiste en etiquetarlo EN VIVO. Si ya viene etiquetado de la corrida
+# anterior, la politica ya aplica y no queda nada que demostrar: el 403 sale
+# antes de que toques nada, y el momento se pierde.
+#
+# Se comprueba aqui y no en agentes-up.sh porque el caso malo es correr la demo
+# DOS VECES sin redesplegar, que es justo cuando agentes-up.sh no se ejecuta.
+_rol=$(kubectl -n agentes get pod -l app=redactor \
+  -o jsonpath='{.items[0].metadata.labels.rol}' 2>/dev/null)
+if [ -z "$_rol" ]; then
+  ok "el redactor NO tiene rol=agente (asi debe estar antes de demostrar)"
+else
+  falta "el redactor ya tiene rol=$_rol de una corrida anterior" \
+        "./seguridad/redactor-limpio.sh"
+fi
+
+# ---------------------------------------------------------------------------
 titulo "La interfaz compilada"
 if [ -f ui/dist/index.html ]; then
   ok "ui/dist existe"

@@ -324,6 +324,7 @@ antes. Ya mordió cinco veces.
 | `ui/src/**` | `cd ui && npm run build` + recargar navegador | Son estáticos, no tocan el backend |
 | `seguridad/*.yaml` | `kubectl apply -f ...` | En caliente, no reinicia nada |
 | Un ConfigMap o un Secret | **`kubectl rollout restart` del pod que lo usa** | No se recargan solos: el proceso los leyó al arrancar |
+| La etiqueta del redactor | **`./seguridad/redactor-limpio.sh`** antes de demostrar | Vive solo en el pod: un pod nuevo nace limpio por construcción |
 | `datos/*.sql` | `./datos/postgres-up.sh --reset` | |
 | Se reinició un pod | rehacer su `port-forward` | Los puentes mueren con el pod, **y no avisan** |
 | Se recreó el cluster | `./lab/publica-vllm.sh` | La IP del host cambió |
