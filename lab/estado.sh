@@ -84,29 +84,47 @@ puerto() {  # puerto  descripcion  como_levantarlo
   fi
 }
 puerto 9000 "port-forward del MCP (:9000)" "kubectl -n $NS port-forward deploy/servidor-mcp 9000:9000"
-# Los agentes no solo tienen que estar ARRIBA: tienen que estar al dia.
+# Los agentes no solo tienen que estar ARRIBA: tienen que estar AL DIA.
 #
 # "Reinicie los agentes?" ha sido la causa de varias sesiones de depuracion:
-# se cambia malla/agente.py, se olvida reiniciar, y el sintoma es que algo
-# nuevo "no hace nada" -indistinguible de un fallo real-. Cada agente publica
-# la huella de su propio codigo en /salud; aqui se compara con la del disco.
-agente_al_dia() {  # puerto  descripcion  como_levantarlo
-  if ! (echo >/dev/tcp/127.0.0.1/"$1") >/dev/null 2>&1; then
-    falta "$2" "$3"; return
+# se cambia malla/agente.py, se olvida reconstruir, y el sintoma es que algo
+# nuevo "no hace nada" -indistinguible de un fallo real-.
+#
+# DESDE QUE SON PODS el riesgo es MAYOR, no menor, y por eso sigue aqui: antes
+# bastaba con reiniciar un proceso; ahora hay que reconstruir la imagen, meterla
+# a kind y reiniciar el Deployment. Tres pasos donde antes habia uno, y olvidar
+# cualquiera de ellos deja el pod con el codigo viejo sin ninguna señal.
+#
+# Se compara la huella del archivo EN EL DISCO con la del archivo DENTRO del
+# pod. Como no hay recarga en caliente, el archivo del pod es exactamente el
+# codigo que corre.
+pod_al_dia() {  # deployment  archivo_en_malla  descripcion
+  local d="$1" f="$2" desc="$3"
+  if ! kubectl -n "$NS" get deploy "$d" >/dev/null 2>&1; then
+    falta "$desc: no existe el Deployment" "./malla/agentes-up.sh"; return
   fi
-  local en_disco en_memoria
-  en_disco=$(python3 -c "import hashlib,pathlib;print(hashlib.sha256(pathlib.Path('malla/agente.py').read_bytes()).hexdigest()[:12])" 2>/dev/null)
-  en_memoria=$(curl -s "http://127.0.0.1:$1/salud" 2>/dev/null | jq -r '.version_codigo // empty' 2>/dev/null)
-  if [ -z "$en_memoria" ]; then
-    falta "$2 corre CODIGO VIEJO (sin /salud)" "reinicialo: $3"
-  elif [ "$en_memoria" != "$en_disco" ]; then
-    falta "$2 corre CODIGO VIEJO ($en_memoria != $en_disco)" "reinicialo: $3"
+  local listas en_disco en_pod
+  listas=$(kubectl -n "$NS" get deploy "$d" \
+    -o jsonpath='{.status.readyReplicas}' 2>/dev/null)
+  if [ "${listas:-0}" -lt 1 ]; then
+    falta "$desc: sin replicas listas" "kubectl -n $NS rollout status deploy/$d"; return
+  fi
+  en_disco=$(python3 -c "import hashlib,pathlib;print(hashlib.sha256(pathlib.Path('malla/$f').read_bytes()).hexdigest()[:12])" 2>/dev/null)
+  en_pod=$(kubectl -n "$NS" exec "deploy/$d" -- python -c \
+    "import hashlib,pathlib;print(hashlib.sha256(pathlib.Path('/app/malla/$f').read_bytes()).hexdigest()[:12])" \
+    2>/dev/null | tr -d '\r\n')
+  if [ -z "$en_pod" ]; then
+    nota "$desc: esta arriba, pero no pude leer su codigo para comparar"
+  elif [ "$en_pod" != "$en_disco" ]; then
+    falta "$desc corre CODIGO VIEJO ($en_pod != $en_disco)" \
+          "./malla/agentes-up.sh   # reconstruye, carga en kind y reinicia"
   else
-    ok "$2"
+    ok "$desc"
   fi
 }
-agente_al_dia 7010 "agente investigador (:7010)" ".venv/bin/python malla/agente.py --rol investigador"
-agente_al_dia 7011 "agente defensor (:7011)"     ".venv/bin/python malla/agente.py --rol defensor --puerto 7011"
+pod_al_dia investigador agente.py "agente investigador (pod)"
+pod_al_dia defensor     agente.py "agente defensor (pod)"
+pod_al_dia orquestador  flujo.py  "orquestador (pod)"
 # La interfaz importa malla/flujo.py AL ARRANCAR, asi que tiene el mismo
 # problema que los agentes: cambias el flujo, olvidas reiniciar, y unos pasos
 # dejan de salir sin que nada parezca roto.
