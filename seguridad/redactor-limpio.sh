@@ -35,9 +35,13 @@
 set -uo pipefail
 NS=agentes
 
+# Se enseña el ESTADO junto a la etiqueta. Sin el, un pod en Terminating que
+# todavia lleva la etiqueta parece un reinicio que no funciono, cuando en
+# realidad es uno que aun no ha terminado de irse.
 mirar() {
-  kubectl -n "$NS" get pod -l app=redactor \
-    -o jsonpath='{range .items[*]}{.metadata.name}{" rol="}{.metadata.labels.rol}{"\n"}{end}' 2>/dev/null
+  kubectl -n "$NS" get pod -l app=redactor -o custom-columns\
+=POD:.metadata.name,ESTADO:.status.phase,ROL:.metadata.labels.rol \
+    2>/dev/null
 }
 
 echo ""
@@ -75,11 +79,21 @@ echo "=== Pod nuevo desde la plantilla"
 kubectl -n "$NS" rollout restart deploy/redactor >/dev/null
 kubectl -n "$NS" rollout status deploy/redactor --timeout=90s
 
+# Esperar a que el viejo se vaya del todo. Sin esto, "como queda" enseña los
+# dos pods y parece que no funciono.
+echo ""
+echo "=== Esperando a que el pod viejo termine de irse"
+for _ in $(seq 1 30); do
+  n=$(kubectl -n "$NS" get pod -l app=redactor --no-headers 2>/dev/null | wc -l | tr -d ' ')
+  [ "${n:-0}" -le 1 ] && break
+  sleep 1
+done
+
 echo ""
 echo "=== Como queda"
 mirar | sed 's/^/  /'
 echo ""
-echo "  Sin valor despues de rol= quiere decir que no la tiene. Eso es lo bueno."
+echo "  ROL en <none> quiere decir que no la tiene. Eso es lo bueno."
 echo ""
 echo "  Para la demo, cuando toque:"
 echo "    kubectl -n $NS label pod -l app=redactor rol=agente"

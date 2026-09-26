@@ -157,12 +157,23 @@ titulo "El redactor, listo para el segmento 6"
 #
 # Se comprueba aqui y no en agentes-up.sh porque el caso malo es correr la demo
 # DOS VECES sin redesplegar, que es justo cuando agentes-up.sh no se ejecuta.
-_rol=$(kubectl -n agentes get pod -l app=redactor \
-  -o jsonpath='{.items[0].metadata.labels.rol}' 2>/dev/null)
-if [ -z "$_rol" ]; then
+# OJO CON .items[0]: durante un reinicio hay DOS pods -el viejo terminando y el
+# nuevo- y el orden de la lista no esta garantizado. Leer el primero puede dar
+# el equivocado, y el sintoma es un aviso que no se va aunque el reset funcione.
+#
+# Se miran TODOS los pods y solo los que estan corriendo: un pod en Terminating
+# ya no recibe trafico, asi que su etiqueta no gobierna nada.
+_sucios=$(kubectl -n agentes get pod -l app=redactor \
+  -o jsonpath='{range .items[?(@.status.phase=="Running")]}{.metadata.name}{" "}{.metadata.labels.rol}{"\n"}{end}' \
+  2>/dev/null | awk 'NF==2 {print $1}')
+_vivos=$(kubectl -n agentes get pod -l app=redactor \
+  --field-selector=status.phase=Running -o name 2>/dev/null | wc -l | tr -d ' ')
+if [ "${_vivos:-0}" -eq 0 ]; then
+  falta "no hay ningun pod del redactor corriendo" "./malla/agentes-up.sh"
+elif [ -z "$_sucios" ]; then
   ok "el redactor NO tiene rol=agente (asi debe estar antes de demostrar)"
 else
-  falta "el redactor ya tiene rol=$_rol de una corrida anterior" \
+  falta "el redactor ya tiene la etiqueta: $(echo $_sucios)" \
         "./seguridad/redactor-limpio.sh"
 fi
 
