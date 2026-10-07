@@ -18,6 +18,21 @@ openai
 # tarjetas se enseñan en pantalla. Ver malla/valida_tarjetas.py.
 a2a-sdk
 
+# EL SERVIDOR HTTP. Lo usan los agentes (malla/agente.py: las tres rutas de
+# A2A) y la interfaz (ui/servidor.py).
+#
+# Estos tres FALTABAN, y el proyecto funcionaba igual: entraban de refilon como
+# dependencias de `mcp` y de `a2a-sdk`. El dia que uno de esos cambie su arbol
+# de dependencias, o que alguien rehaga el venv, el fallo es
+# `ModuleNotFoundError: No module named 'starlette'` -y parece que se rompio el
+# codigo, no el entorno-.
+#
+# Depender de una dependencia transitiva es depender de una decision que toma
+# otro proyecto. Si se importa, se declara.
+starlette
+uvicorn
+httpx
+
 # Trazas (observabilidad/). El exportador va por HTTP, que necesita menos
 # dependencias que el de gRPC y le basta al Collector.
 opentelemetry-sdk
