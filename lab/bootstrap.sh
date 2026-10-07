@@ -333,18 +333,54 @@ else
   sudo apt-get install -y -qq python3-venv
 fi
 
-if [ -d "$VENV" ]; then
-  echo "Ya existe en $VENV"
-else
+# SE COMPRUEBA EL PIP, NO EL DIRECTORIO.
+#
+# `[ -d "$VENV" ]` daba por bueno un venv a medias, y existe un caso muy real
+# en que eso pasa: en Ubuntu, `python3 -m venv --help` funciona aunque falte
+# ensurepip, asi que la comprobacion de arriba pasa, el venv se crea, el
+# interprete queda... y pip no llega. Nada avisa.
+#
+# El sintoma luego es desconcertante: `.venv/bin/python` arranca y da
+# `ModuleNotFoundError`, que parece codigo roto. Y `.venv/bin/pip` ni existe,
+# asi que el arreglo obvio tampoco se puede teclear. Paso el 2026-10-07.
+if [ ! -d "$VENV" ]; then
   python3 -m venv "$VENV"
   echo "Creado en $VENV"
+elif [ ! -x "$VENV/bin/pip" ]; then
+  echo "El venv existe pero le falta pip. Reparandolo."
+  # ensurepip mete pip dentro de un venv ya creado, sin rehacerlo.
+  if ! "$VENV/bin/python" -m ensurepip --upgrade >/dev/null 2>&1; then
+    echo "  ensurepip no esta disponible. Instalando python3-venv y rehaciendo."
+    sudo apt-get install -y -qq python3-venv
+    rm -rf "$VENV"
+    python3 -m venv "$VENV"
+  fi
+  echo "  reparado"
+else
+  echo "Ya existe en $VENV, con pip"
 fi
-# pip viejo falla con ruedas modernas; se actualiza siempre, es barato.
-"$VENV/bin/pip" install --quiet --upgrade pip wheel
+
+# A partir de aqui se usa `python -m pip` y no `bin/pip`: funciona igual y
+# sobrevive a un venv recien reparado, donde el lanzador bin/pip puede quedar
+# con una ruta vieja dentro.
+"$VENV/bin/python" -m pip install --quiet --upgrade pip wheel
 if [ -f "$REPO/requirements.txt" ]; then
   echo "Instalando requirements.txt"
-  "$VENV/bin/pip" install --quiet -r "$REPO/requirements.txt"
+  "$VENV/bin/python" -m pip install --quiet -r "$REPO/requirements.txt"
 fi
+
+# Que de verdad se pueda importar lo que el proyecto importa. Instalar sin
+# error no basta: starlette, uvicorn y httpx llegaron durante semanas como
+# dependencias transitivas de otros paquetes, y el dia que eso cambie el fallo
+# sale al arrancar la interfaz, no aqui.
+echo "Comprobando que los imports del proyecto funcionen"
+for mod in starlette uvicorn httpx openai psycopg mcp; do
+  if "$VENV/bin/python" -c "import $mod" >/dev/null 2>&1; then
+    echo "  ok    $mod"
+  else
+    echo "  FALTA $mod   -> añadelo a requirements.txt"
+  fi
+done
 echo "Para usarlo:  source $VENV/bin/activate"
 
 
