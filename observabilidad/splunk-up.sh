@@ -70,6 +70,14 @@ kubectl get nodes >/dev/null 2>&1 || {
 # El token por teclado. -s para que no se vea, y no toca el historial ni un
 # archivo. Si algun dia hay que automatizarlo, que venga por variable de
 # entorno, nunca por argumento: los argumentos se ven en `ps`.
+# Con --reusar-token se saca del Secret que ya existe, sin preguntar nada. Es
+# lo que permite que collector-up.sh vuelva a poner Splunk solo, despues de que
+# un `kubectl apply` del manifiesto se haya llevado el exportador por delante.
+if [ "${2:-}" = "--reusar-token" ] && [ -z "${SPLUNK_TOKEN:-}" ]; then
+  SPLUNK_TOKEN=$(kubectl -n "$NS" get secret splunk \
+    -o jsonpath='{.data.SPLUNK_ACCESS_TOKEN}' 2>/dev/null | base64 -d 2>/dev/null)
+  [ -n "$SPLUNK_TOKEN" ] && echo "  (reusando el token guardado)"
+fi
 if [ -z "${SPLUNK_TOKEN:-}" ]; then
   echo ""
   echo "Necesitas un token con alcance INGEST (Settings -> Access Tokens)."
@@ -201,6 +209,21 @@ log "Que dice el Collector al arrancar"
 sleep 3
 kubectl -n "$NS" logs deploy/otel-collector -c collector --tail=25 2>/dev/null \
   | grep -iE "error|splunk|otlp_?http|exporter|started" | tail -8 | sed 's/^/  /'
+
+# SE APUNTA EL DESTINO, y no es un detalle.
+#
+# `kubectl apply -f 00-collector.yaml` -que hace collector-up.sh- devuelve el
+# ConfigMap a la plantilla del repo y se lleva este exportador por delante, sin
+# avisar. El sintoma es desconcertante: todo sigue "funcionando", las trazas
+# siguen saliendo al archivo, y Splunk simplemente deja de recibir. Parece que
+# caduco la cuenta. Paso el 2026-10-07.
+#
+# El token sobrevive porque vive en un Secret aparte. Lo que se pierde es el
+# endpoint, asi que se guarda aqui y collector-up.sh lo vuelve a aplicar solo.
+echo "$INGESTA" > "$DIR/.splunk-destino"
+echo ""
+echo "  Destino apuntado en observabilidad/.splunk-destino"
+echo "  collector-up.sh lo volvera a aplicar solo si rehaces el Collector."
 
 log "Como comprobarlo de verdad"
 echo ""

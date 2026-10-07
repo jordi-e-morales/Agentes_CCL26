@@ -17,3 +17,4 @@ lab/endpoint.env
 *.swo
 *~
 .DS_Store
+observabilidad/.splunk-destino

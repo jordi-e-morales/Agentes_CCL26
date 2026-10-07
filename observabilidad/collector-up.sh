@@ -26,6 +26,25 @@ kubectl create namespace "$NS" --dry-run=client -o yaml | kubectl apply -f - >/d
 
 log "Aplicando el Collector"
 kubectl apply -f "$DIR/00-collector.yaml" >/dev/null
+
+# ESTE APPLY SE LLEVA A SPLUNK POR DELANTE.
+#
+# El manifiesto trae el ConfigMap con el exportador de Splunk COMENTADO, asi
+# que aplicarlo devuelve la configuracion a la plantilla. Si Splunk estaba
+# puesto, deja de recibir y nada lo dice: las trazas siguen saliendo al archivo
+# y a los logs, asi que todo parece normal.
+#
+# Si hay destino apuntado y token guardado, se vuelve a poner solo.
+DESTINO="$DIR/.splunk-destino"
+if [ -f "$DESTINO" ] && kubectl -n "$NS" get secret splunk >/dev/null 2>&1; then
+  echo ""
+  echo "  Splunk estaba configurado. Volviendo a ponerlo."
+  "$DIR/splunk-up.sh" "$(cat "$DESTINO")" --reusar-token
+elif [ -f "$DESTINO" ]; then
+  echo ""
+  echo "  AVISO: habia un destino de Splunk apuntado pero no esta el Secret."
+  echo "  Para volver a ponerlo:  ./observabilidad/splunk-up.sh $(cat "$DESTINO")"
+fi
 kubectl -n "$NS" rollout status deploy/otel-collector --timeout=120s
 
 log "Como apuntarle el agente"

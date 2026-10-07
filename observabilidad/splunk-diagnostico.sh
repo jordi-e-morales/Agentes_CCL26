@@ -51,7 +51,25 @@ else
 fi
 
 echo ""
-echo "=== 3. Que hay configurado"
+echo "=== 3. Esta Splunk en el pipeline?"
+# La pregunta de verdad, antes de mirar endpoints. Un exportador comentado no
+# da ningun error: simplemente no envia, y todo lo demas parece normal.
+if kubectl -n "$NS" get cm otel-collector-config -o yaml 2>/dev/null \
+   | grep -qE "exporters: \[.*splunk"; then
+  ok "si, el exportador esta en el pipeline de trazas"
+else
+  mal "NO. El pipeline solo tiene [debug, file]"
+  nota "No es que Splunk rechace nada: no se le esta enviando."
+  nota "Pasa al reaplicar 00-collector.yaml, que devuelve la plantilla."
+  if [ -f "$(dirname "$0")/.splunk-destino" ]; then
+    nota "Para rehacerlo:  ./observabilidad/collector-up.sh"
+  else
+    nota "Para ponerlo:    ./observabilidad/splunk-up.sh <endpoint-de-ingesta>"
+  fi
+fi
+
+echo ""
+echo "=== 3b. Que hay configurado"
 kubectl -n "$NS" get cm otel-collector-config -o yaml 2>/dev/null \
   | grep -E "traces_endpoint|exporters: \[" | sed 's/^ */        /'
 
