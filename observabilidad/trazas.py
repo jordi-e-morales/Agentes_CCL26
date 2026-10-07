@@ -41,6 +41,7 @@ Uso:
 """
 
 import contextlib
+import json
 import os
 
 # ---------------------------------------------------------------------------
@@ -149,6 +150,89 @@ def span_tool(tracer, nombre: str, call_id: str):
         "gen_ai.tool.call.id": call_id,
         "tool.name": nombre,          # alias legible sin conocer la convencion
     })
+
+
+# ---------------------------------------------------------------------------
+# EL CONTENIDO DE LOS MENSAJES
+#
+# Esto es opcional en la convencion de OTel, y a proposito: un prompt lleva lo
+# que el usuario escribio, y en un sistema real eso puede ser datos personales,
+# claves o secretos de negocio. La convencion dice que capturarlo se ACTIVA,
+# nunca viene de serie.
+#
+# Aqui viene ACTIVADO porque todos los datos son sinteticos (CLAUDE.md §6) y
+# porque es lo que hace util el segmento 5: con el contenido en la traza, la
+# INYECCION se ve dentro de Splunk, en el mismo sitio donde se ve la latencia.
+# Se apaga con OTEL_CAPTURAR_CONTENIDO=0 si alguna vez corre con datos reales.
+CAPTURAR = os.getenv("OTEL_CAPTURAR_CONTENIDO", "1") != "0"
+
+# Un prompt de este proyecto ronda los 3000 tokens, o sea unos 12 KB. Cabe de
+# sobra en un span, pero se corta por si algun caso crece: un span gigante no
+# falla, se encola y retrasa el lote entero.
+TOPE = int(os.getenv("OTEL_TOPE_CONTENIDO", "16000"))
+
+
+def _recortar(texto: str) -> str:
+    if texto is None:
+        return ""
+    texto = str(texto)
+    if len(texto) <= TOPE:
+        return texto
+    return texto[:TOPE] + f"\n... [cortado, {len(texto)} caracteres en total]"
+
+
+def anotar_mensajes(span, mensajes: list, respuesta=None):
+    """Mete la conversacion en el span: lo que entro y lo que salio.
+
+    `mensajes` es la lista que se le mando al modelo -el prompt del rol, el
+    caso, el debate hasta ahora y los resultados de las herramientas-. Es
+    exactamente el contexto sobre el que razono, y por eso vale tanto: si el
+    agente dice algo raro, aqui esta el porque.
+
+    LOS DOS JUEGOS DE NOMBRES otra vez, por el mismo motivo que en
+    anotar_tokens: los de la convencion para que un APM los reconozca solo, y
+    unos planos de respaldo por si no lo hace.
+    """
+    if not CAPTURAR or not mensajes:
+        return
+
+    # --- entrada ---------------------------------------------------------
+    entrada = []
+    for m in mensajes:
+        papel = m.get("role", "?") if isinstance(m, dict) else getattr(m, "role", "?")
+        cuerpo = m.get("content") if isinstance(m, dict) else getattr(m, "content", None)
+        entrada.append({"role": papel, "content": _recortar(cuerpo)})
+
+    span.set_attribute("gen_ai.input.messages", _recortar(json.dumps(entrada, ensure_ascii=False)))
+    # Plano: el ultimo turno del usuario, legible sin desplegar un JSON.
+    ultimo = next((m for m in reversed(entrada) if m["role"] == "user"), None)
+    if ultimo:
+        span.set_attribute("gen_ai.prompt", ultimo["content"])
+
+    if respuesta is None:
+        return
+
+    # --- salida ----------------------------------------------------------
+    texto = _recortar(getattr(respuesta, "content", None))
+    salida = {"role": "assistant", "content": texto}
+
+    # Las herramientas pedidas van DENTRO de la salida, no aparte: cuando el
+    # modelo pide una herramienta su `content` viene vacio, y sin esto el span
+    # pareceria una respuesta en blanco. Ademas es justo donde se ve el ataque
+    # llegar a la accion.
+    llamadas = getattr(respuesta, "tool_calls", None)
+    if llamadas:
+        salida["tool_calls"] = [
+            {"name": t.function.name, "arguments": _recortar(t.function.arguments)}
+            for t in llamadas
+        ]
+        span.set_attribute("gen_ai.response.tool_names",
+                           ", ".join(t.function.name for t in llamadas))
+
+    span.set_attribute("gen_ai.output.messages",
+                       _recortar(json.dumps([salida], ensure_ascii=False)))
+    if texto:
+        span.set_attribute("gen_ai.completion", texto)
 
 
 def anotar_tokens(span, modelo: str, prompt: int, completion: int):

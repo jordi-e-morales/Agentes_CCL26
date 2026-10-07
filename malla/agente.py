@@ -314,6 +314,13 @@ class Agente:
             r = self.llm.chat.completions.create(
                 model=self.modelo, messages=mensajes, temperature=0.3, **opcionales
             )
+            # La conversacion entera dentro del span: lo que entro y lo que
+            # salio. Es lo que convierte la traza de "tardo 5.85 s" en "tardo
+            # 5.85 s Y ESTO fue lo que leyo para decidir".
+            #
+            # Va DESPUES de la llamada para poder guardar las dos mitades de
+            # una vez, con la respuesta ya en la mano.
+            trazas.anotar_mensajes(span, mensajes, r.choices[0].message)
             if r.usage:
                 consumo["tokens.prompt"] += r.usage.prompt_tokens
                 consumo["tokens.completion"] += r.usage.completion_tokens
