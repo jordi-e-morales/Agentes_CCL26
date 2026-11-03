@@ -56,8 +56,10 @@ echo "=== 3. Esta Splunk en el pipeline?"
 # da ningun error: simplemente no envia, y todo lo demas parece normal.
 if kubectl -n "$NS" get cm otel-collector-config -o yaml 2>/dev/null \
    | grep -qE "exporters: \[.*splunk"; then
+  EN_PIPELINE=si
   ok "si, el exportador esta en el pipeline de trazas"
 else
+  EN_PIPELINE=no
   mal "NO. El pipeline solo tiene [debug, file]"
   nota "No es que Splunk rechace nada: no se le esta enviando."
   nota "Pasa al reaplicar 00-collector.yaml, que devuelve la plantilla."
@@ -75,6 +77,14 @@ kubectl -n "$NS" get cm otel-collector-config -o yaml 2>/dev/null \
 
 echo ""
 echo "=== 4. El cluster alcanza el destino"
+# Sin exportador no hay destino: el unico endpoint que queda en el ConfigMap es
+# el del comentario de ejemplo, con <REALM> sin sustituir. Intentar resolverlo
+# daba un "MAL" alarmante que no significaba nada -el paso 3 ya dijo lo que
+# pasa- y mandaba a mirar la red cuando el problema era la configuracion.
+if [ "${EN_PIPELINE:-no}" = "no" ]; then
+  nota "(saltado: sin exportador no hay destino que probar)"
+  HOST=""
+else
 HOST=$(kubectl -n "$NS" get cm otel-collector-config -o yaml 2>/dev/null \
   | grep traces_endpoint | head -1 | sed -E 's#.*https?://##; s#/.*##')
 if [ -n "$HOST" ]; then
@@ -83,6 +93,7 @@ if [ -n "$HOST" ]; then
     2>/dev/null | tail -1)
   [ "$r" = "si" ] && ok "$HOST resuelve y acepta conexiones en el 443" \
                   || mal "$HOST no responde desde el cluster"
+fi
 fi
 
 echo ""
