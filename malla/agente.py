@@ -391,9 +391,18 @@ class Agente:
                 for t in respuesta.tool_calls:
                     args = json.loads(t.function.arguments or "{}")
                     print(f"  [{self.rol}] MCP -> {t.function.name}({args})", flush=True)
-                    with trazas.span_tool(self.tracer, t.function.name, t.id):
-                        res = await mcp.call_tool(t.function.name, args)
-                    txt = resultado_mcp_a_texto(res)
+                    # El span lleva las DOS mitades: lo que se pidio y lo que
+                    # devolvio. Por eso el resultado se anota dentro del with,
+                    # despues de convertirlo a texto.
+                    with trazas.span_tool(self.tracer, t.function.name,
+                                          t.id, args) as span_h:
+                        try:
+                            res = await mcp.call_tool(t.function.name, args)
+                        except Exception as e:
+                            trazas.anotar_error(span_h, e)
+                            raise
+                        txt = resultado_mcp_a_texto(res)
+                        trazas.anotar_resultado_tool(span_h, txt)
                     print(f"  [{self.rol}] MCP <- {txt[:160]}", flush=True)
                     llamadas.append({"tool": t.function.name, "args": args,
                                      "resultado": txt[:600],

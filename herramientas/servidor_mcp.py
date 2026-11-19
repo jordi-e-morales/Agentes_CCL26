@@ -147,7 +147,8 @@ def contexto_alerta(alerta_id: str) -> dict:
     procedencia.
     """
     alerta = consultar(
-        "SELECT id, origen, severidad, titulo, sujeto_id FROM alertas WHERE id = %s",
+        "SELECT id, origen, severidad, titulo, sujeto_id, atributos "
+        "FROM alertas WHERE id = %s",
         alerta_id,
     )
     fragmentos = consultar(
@@ -156,8 +157,14 @@ def contexto_alerta(alerta_id: str) -> dict:
         alerta_id,
     )
     externos = sum(1 for f in fragmentos if f["source_trust"] == "external")
+    # `atributos` trae la regla que disparo, su umbral y lo observado. Se saca
+    # a primer nivel como `deteccion` para que el modelo no tenga que
+    # adivinar que ahi dentro hay lo mas importante del caso.
+    cabecera = alerta[0] if alerta else None
+    deteccion = (cabecera or {}).pop("atributos", None) or {}
     return {
-        "alerta": alerta[0] if alerta else None,
+        "alerta": cabecera,
+        "deteccion": deteccion,
         "fragmentos": fragmentos,
         "resumen": (f"{len(fragmentos)} texto(s), {externos} de procedencia externa"
                     if fragmentos else "la alerta no tiene textos adjuntos"),

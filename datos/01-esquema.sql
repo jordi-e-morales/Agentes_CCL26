@@ -32,7 +32,19 @@ CREATE TABLE alertas (
     sujeto_id TEXT        NOT NULL REFERENCES sujetos(id),
     -- Siempre true en este proyecto. Existe para que la interfaz pueda marcar
     -- los datos como sinteticos sin depender de que alguien se acuerde.
-    sintetica BOOLEAN     NOT NULL DEFAULT TRUE
+    sintetica BOOLEAN     NOT NULL DEFAULT TRUE,
+    -- POR QUE LA ALERTA TAMBIEN LLEVA JSONB.
+    --
+    -- Aqui va lo que DISPARO la alerta: la regla, su ventana, el umbral y lo
+    -- observado. Sin eso, un agente solo puede leer el titulo -"patron de
+    -- actividad inusual"- que no se puede ni discutir ni verificar. Y un
+    -- debate sobre evidencia que no tiene numeros acaba en que los dos
+    -- agentes coinciden en que no hay nada que decir.
+    --
+    -- Va en JSONB por el mismo motivo que en sujetos y eventos: una regla de
+    -- SIEM y una de monitoreo transaccional no tienen las mismas columnas, y
+    -- ramificar sobre eso rompe la promesa del §7.
+    atributos JSONB       NOT NULL DEFAULT '{}'
 );
 
 -- ---------------------------------------------------------------------------

@@ -120,6 +120,10 @@ def span_agente(tracer, nombre: str, padre=None):
     return _con_atributos(ctx, {
         "gen_ai.operation.name": "invoke_agent",
         "gen_ai.agent.name": nombre,
+        # Requerido por Splunk Agent Observability en los spans de agente, no
+        # solo en los de modelo. Sin el, el span se ingiere pero puede quedar
+        # fuera de las vistas de agente.
+        "gen_ai.provider.name": "vllm",
     })
 
 
@@ -133,7 +137,7 @@ def span_chat(tracer, modelo: str):
     })
 
 
-def span_tool(tracer, nombre: str, call_id: str):
+def span_tool(tracer, nombre: str, call_id: str, argumentos=None):
     """Una llamada a herramienta.
 
     `gen_ai.tool.call.id` es el atributo que MAS importa de los tres: enlaza
@@ -143,13 +147,53 @@ def span_tool(tracer, nombre: str, call_id: str):
     a mano.
     """
     ctx = tracer.start_as_current_span(f"execute_tool {nombre}")
-    return _con_atributos(ctx, {
+    atributos = {
         "gen_ai.operation.name": "execute_tool",
         "gen_ai.tool.name": nombre,
         "gen_ai.tool.type": "function",
         "gen_ai.tool.call.id": call_id,
         "tool.name": nombre,          # alias legible sin conocer la convencion
-    })
+    }
+    # QUE SE LE PIDIO. Sin esto la traza dice que se llamo a consulta_historial
+    # pero no SOBRE QUIEN, que es justo lo que hace falta para auditar una
+    # decision. Es ademas uno de los atributos que la convencion marca para
+    # spans de herramienta.
+    if argumentos is not None and CAPTURAR:
+        atributos["gen_ai.tool.call.arguments"] = _recortar(
+            argumentos if isinstance(argumentos, str)
+            else json.dumps(argumentos, ensure_ascii=False))
+    return _con_atributos(ctx, atributos)
+
+
+def anotar_resultado_tool(span, resultado):
+    """QUE DEVOLVIO la herramienta.
+
+    Va aparte porque el resultado no existe cuando se abre el span. Con esto,
+    la traza tiene las dos mitades: la pregunta y la respuesta. Es la
+    diferencia entre "llamo a lista_sancionados" y "llamo a lista_sancionados
+    sobre SUJ-0001 y le devolvio una lista vacia" -que es el hecho sobre el que
+    despues se argumenta-.
+    """
+    if not CAPTURAR or resultado is None:
+        return
+    span.set_attribute("gen_ai.tool.call.result", _recortar(
+        resultado if isinstance(resultado, str)
+        else json.dumps(resultado, ensure_ascii=False)))
+
+
+def anotar_error(span, exc: BaseException):
+    """Marca el span como fallido, como pide la convencion.
+
+    Un span que termina en error DEBE llevar `error.type` y el estado ERROR.
+    Sin eso un fallo de herramienta se ve en la cascada como una llamada normal
+    y corta, que es como no verlo.
+    """
+    try:
+        from opentelemetry.trace import Status, StatusCode
+        span.set_status(Status(StatusCode.ERROR, str(exc)[:200]))
+    except Exception:
+        pass
+    span.set_attribute("error.type", type(exc).__name__)
 
 
 # ---------------------------------------------------------------------------

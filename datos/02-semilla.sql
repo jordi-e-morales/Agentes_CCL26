@@ -8,29 +8,76 @@
 -- ===========================================================================
 -- DOMINIO A: monitoreo transaccional
 -- ===========================================================================
+-- EL PERFIL DECLARADO ES LA MITAD DEL ARGUMENTO.
+--
+-- Sin un volumen esperado, "287 mil pesos" no es alto ni bajo: es un numero
+-- suelto. Con el perfil al lado, se vuelve 6.4 veces lo declarado, y ESO si
+-- se puede discutir -porque admite dos lecturas honestas: o es estructuracion,
+-- o es una empresa que crecio-.
 INSERT INTO sujetos (id, tipo, etiqueta, atributos) VALUES
  ('SUJ-0001', 'organizacion', 'Distribuidora Quetzal Ficticia, S.A.',
-  '{"jurisdiccion":"PAIS-FICTICIO-A","antiguedad_meses":7,"canal_preferente":"digital"}'),
+  '{"jurisdiccion":"PAIS-FICTICIO-A","antiguedad_meses":7,
+    "giro_declarado":"venta al mayoreo de abarrotes",
+    "volumen_declarado_mensual":45000,"moneda":"MXN",
+    "canal_preferente":"digital","clasificacion_riesgo_cliente":"medio"}'),
  ('SUJ-0003', 'organizacion', 'Comercializadora Jacaranda Ficticia, S. de R.L.',
   '{"jurisdiccion":"PAIS-FICTICIO-B","antiguedad_meses":3}'),
  ('SUJ-0007', 'organizacion', 'Importadora Ceiba Ficticia, S.A.',
   '{"jurisdiccion":"PAIS-FICTICIO-C","antiguedad_meses":41}');
 
 -- Fijate en `atributos`: canal y volumen. Vocabulario del dominio A.
+-- EVENTOS CON NUMEROS, NO CON ADJETIVOS.
+--
+-- Antes aqui decia volumen:"alto". Sobre un adjetivo no se puede argumentar:
+-- los dos agentes leian lo mismo, no tenian como discrepar, y la segunda ronda
+-- repetia la primera. Con importes, fechas y contrapartes hay material para
+-- dos lecturas distintas de los MISMOS hechos, que es lo que hace util tener
+-- dos agentes.
+--
+-- Los importes estan construidos a proposito justo por debajo de 15000, que es
+-- el umbral de reporte declarado en la alerta. Eso es lo ambiguo: encaja con
+-- fraccionamiento, y encaja tambien con una empresa que factura a plazos.
 INSERT INTO eventos (sujeto_id, momento, tipo, atributos) VALUES
- ('SUJ-0001', '2026-08-14T10:12:00Z', 'actividad', '{"canal":"digital","volumen":"alto","contraparte":"CP-FICTICIA-11"}'),
- ('SUJ-0001', '2026-08-29T16:40:00Z', 'actividad', '{"canal":"digital","volumen":"alto","contraparte":"CP-FICTICIA-11"}'),
- ('SUJ-0001', '2026-09-02T09:05:00Z', 'cambio',    '{"campo":"representante_legal"}'),
- ('SUJ-0007', '2026-07-03T11:00:00Z', 'actividad', '{"canal":"presencial","volumen":"bajo"}');
+ ('SUJ-0001', '2026-08-18T10:12:00Z', 'actividad', '{"canal":"digital","importe":14200,"moneda":"MXN","contraparte":"CP-FICTICIA-11","contraparte_nueva":true}'),
+ ('SUJ-0001', '2026-08-21T11:48:00Z', 'actividad', '{"canal":"digital","importe":13900,"moneda":"MXN","contraparte":"CP-FICTICIA-11","contraparte_nueva":false}'),
+ ('SUJ-0001', '2026-08-26T09:31:00Z', 'actividad', '{"canal":"digital","importe":14750,"moneda":"MXN","contraparte":"CP-FICTICIA-11","contraparte_nueva":false}'),
+ ('SUJ-0001', '2026-09-02T09:05:00Z', 'cambio',    '{"campo":"representante_legal","anterior":"REP-FICTICIO-A","nuevo":"REP-FICTICIO-B"}'),
+ ('SUJ-0001', '2026-09-04T15:20:00Z', 'actividad', '{"canal":"digital","importe":14980,"moneda":"MXN","contraparte":"CP-FICTICIA-27","contraparte_nueva":true}'),
+ ('SUJ-0001', '2026-09-09T12:03:00Z', 'actividad', '{"canal":"digital","importe":14100,"moneda":"MXN","contraparte":"CP-FICTICIA-27","contraparte_nueva":false}'),
+ ('SUJ-0001', '2026-09-11T17:55:00Z', 'actividad', '{"canal":"digital","importe":14640,"moneda":"MXN","contraparte":"CP-FICTICIA-27","contraparte_nueva":false}'),
+ -- Y uno que NO encaja en el patron, para que el defensor tenga de donde
+ -- agarrarse: una factura grande, declarada, por el canal de siempre.
+ ('SUJ-0001', '2026-09-13T10:00:00Z', 'actividad', '{"canal":"digital","importe":96400,"moneda":"MXN","contraparte":"CP-FICTICIA-03","contraparte_nueva":false,"soporte":"factura declarada"}'),
+ ('SUJ-0007', '2026-07-03T11:00:00Z', 'actividad', '{"canal":"presencial","importe":8300,"moneda":"MXN","contraparte":"CP-FICTICIA-02","contraparte_nueva":false}');
 
 INSERT INTO listas (nombre, sujeto_id, motivo) VALUES
  ('lista-ficticia-A', 'SUJ-0007', 'coincidencia por nombre, sin confirmar');
 
-INSERT INTO alertas (id, origen, creada_en, severidad, titulo, sujeto_id) VALUES
+-- EL TITULO DICE QUE REGLA DISPARO, NO "ACTIVIDAD INUSUAL".
+--
+-- Y `atributos` trae la regla con su ventana, su umbral y lo observado. Eso
+-- convierte "revisa esta alerta" en una pregunta concreta: 6 operaciones por
+-- 86570 contra un umbral de 6 y 90000 es un caso LIMITE, y los casos limite
+-- son los unicos que vale la pena deliberar.
+INSERT INTO alertas (id, origen, creada_en, severidad, titulo, sujeto_id, atributos) VALUES
  ('ALR-FICTICIA-0001', 'monitoreo-transaccional-ficticio', '2026-09-15T14:32:00Z',
-  'alta', 'Patron de actividad inusual en los ultimos 30 dias', 'SUJ-0001'),
+  'alta', 'EST-04 fraccionamiento: 6 operaciones bajo el umbral en 30 dias', 'SUJ-0001',
+  '{"regla":"EST-04","nombre_regla":"Fraccionamiento bajo umbral de reporte",
+    "ventana_dias":30,
+    "umbral":{"operaciones":6,"acumulado":90000,"umbral_reporte_operacion":15000},
+    "observado":{"operaciones":6,"acumulado":86570,"maximo_operacion":14980},
+    "desviacion_vs_perfil":1.92,
+    "contrapartes_nuevas":2,
+    "dias_desde_cambio_representante":13}'),
  ('ALR-FICTICIA-0003', 'monitoreo-transaccional-ficticio', '2026-09-17T09:05:00Z',
-  'alta', 'Alerta con texto de procedencia externa (caso del segmento 6)', 'SUJ-0003');
+  'alta', 'EST-04 fraccionamiento con nota del reportante (caso del segmento 6)', 'SUJ-0003',
+  '{"regla":"EST-04","nombre_regla":"Fraccionamiento bajo umbral de reporte",
+    "ventana_dias":30,
+    "umbral":{"operaciones":6,"acumulado":90000,"umbral_reporte_operacion":15000},
+    "observado":{"operaciones":7,"acumulado":94300,"maximo_operacion":14890},
+    "desviacion_vs_perfil":3.10,
+    "contrapartes_nuevas":3,
+    "dias_desde_cambio_representante":4}');
 
 -- ===========================================================================
 -- DOMINIO B: alertas de SOC
@@ -49,9 +96,18 @@ INSERT INTO eventos (sujeto_id, momento, tipo, atributos) VALUES
  ('SUJ-0002', '2026-09-16T03:11:04Z', 'conexion', '{"destino":"203.0.113.9","puerto":8443,"bytes":41221}'),
  ('SUJ-0002', '2026-09-16T03:12:50Z', 'proceso',  '{"binario":"/usr/bin/curl","usuario":"svc-app","padre":"/tmp/ficticio-xyz"}');
 
-INSERT INTO alertas (id, origen, creada_en, severidad, titulo, sujeto_id) VALUES
+-- La MISMA columna atributos, con vocabulario de SOC. Ni una linea de codigo
+-- cambia para leerla: es la prueba de neutralidad del §7, ahora tambien en la
+-- cabecera de la alerta y no solo en los eventos.
+INSERT INTO alertas (id, origen, creada_en, severidad, titulo, sujeto_id, atributos) VALUES
  ('ALR-FICTICIA-0002', 'siem-ficticio', '2026-09-16T03:15:00Z', 'critica',
-  'Proceso no habitual con conexion saliente desde un host de produccion', 'SUJ-0002');
+  'T1059 ejecucion desde /tmp con salida a destino no catalogado', 'SUJ-0002',
+  '{"regla":"SIEM-T1059","nombre_regla":"Interprete ejecutado desde ruta temporal",
+    "ventana_dias":1,
+    "umbral":{"procesos_no_catalogados":1,"destinos_externos":1},
+    "observado":{"procesos_no_catalogados":1,"destinos_externos":1,"bytes_salientes":41221},
+    "tecnica_attack":"T1059","hora_local":"03:11",
+    "fuera_de_horario":true}');
 
 -- ===========================================================================
 -- Los textos libres, con su procedencia declarada.
