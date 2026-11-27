@@ -325,6 +325,7 @@ antes. Ya mordió cinco veces.
 | `seguridad/*.yaml` | `kubectl apply -f ...` | En caliente, no reinicia nada |
 | Un ConfigMap o un Secret | **`kubectl rollout restart` del pod que lo usa** | No se recargan solos: el proceso los leyó al arrancar |
 | La etiqueta del redactor | **`./seguridad/redactor-limpio.sh`** antes de demostrar | Vive solo en el pod: un pod nuevo nace limpio por construcción |
+| Isovalent Enterprise | **`./lab/isovalent-up.sh`** en vez del Cilium de `cluster-up.sh` | El token de Artifactory caduca a los 90 días: precarga las imágenes |
 | `datos/*.sql` | `./datos/postgres-up.sh --reset` | |
 | Se reinició un pod | rehacer su `port-forward` | Los puentes mueren con el pod, **y no avisan** |
 | Se recreó el cluster | `./lab/publica-vllm.sh` | La IP del host cambió |
