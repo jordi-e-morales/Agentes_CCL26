@@ -22,6 +22,23 @@
 #      $REPLY, no en $ID_TOKEN, asi que el curl de abajo manda "Bearer " vacio
 #      y devuelve un 401 que parece culpa del token
 #
+# ANTES DEL TOKEN: EL GRUPO. Esto es lo primero y lo que mas cuesta descubrir.
+# ----------------------------------------------------------------------------
+# El acceso de lectura a los artefactos de Isovalent NO va por ticket de
+# Artifactory: va por pertenencia a un grupo en MyID Groups.
+#
+#     isovalent-artifactory-read-ext
+#
+# Sin esa membresia todo lo demas funciona y aun asi falla: el token se crea
+# bien, autentica bien, ve 140 repositorios -y el de Isovalent da 403-. Nada
+# en ese 403 menciona un grupo, asi que es facil perder horas regenerando
+# tokens que ya estaban bien. Comprobado el 2026-11-27.
+#
+# Y UNA VEZ QUE TE APRUEBEN: REGENERA EL TOKEN. La pertenencia a grupos se
+# sincroniza desde el proveedor de identidad y el token que creaste antes
+# puede seguir llevando el conjunto viejo. Si sigue dando 403 justo despues
+# de la aprobacion, eso es lo primero que hay que descartar.
+#
 # COMO SE SACA EL TOKEN QUE ESTE SCRIPT PIDE
 # ------------------------------------------
 # Son DOS tokens distintos y es la confusion que mas cuesta:
@@ -224,7 +241,9 @@ if ! helm search repo devhub/cilium --version "$CILIUM_VER" 2>/dev/null | grep -
   echo "    - el token caduco (duran 90 dias)"
   echo "    - pusiste el ID token y no el de ACCESO que se pide con el"
   echo "      (el intercambio esta en la cabecera de este script)"
-  echo "    - tu cuenta no tiene acceso al repo: eso da 403 y se pide aparte"
+  echo "    - NO eres miembro de isovalent-artifactory-read-ext en MyID"
+  echo "      Groups. Es la causa mas probable, y el 403 no la menciona."
+  echo "    - te aprobaron el grupo pero el token es anterior: regeneralo"
   echo "    - el CEC no es el correcto (va el usuario, no el correo)"
   exit 1
 fi

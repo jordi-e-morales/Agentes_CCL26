@@ -109,6 +109,21 @@ argumento: los argumentos se ven en `ps` y quedan en el historial). Entre
 `--solo-kind` y el instalador los nodos se quedan en `NotReady`: es lo
 esperado, todavía no hay red.
 
+**Antes del token hace falta el grupo**, y es lo que más cuesta descubrir: el
+acceso de lectura a los artefactos de Isovalent va por pertenencia a
+**`isovalent-artifactory-read-ext`** en MyID Groups, no por un ticket de
+Artifactory. Sin esa membresía todo lo demás funciona y aun así falla — el
+token se crea, autentica, ve 140 repositorios, y el de Isovalent da **403**.
+Nada en ese 403 menciona un grupo.
+
+El token son **dos pasos**: creas un *ID token* en la UI de Artifactory y lo
+cambias por un *access token* contra `/access/api/v1/tokens`. Solo el segundo
+sirve como password. El intercambio completo está escrito en la cabecera de
+`lab/isovalent-up.sh`, junto con la comprobación previa que distingue el 401
+(token mal) del 403 (falta el grupo). **Y si te acaban de aprobar el grupo y
+sigue el 403, regenera el token**: pudo quedarse con el conjunto de grupos
+anterior.
+
 Si ya tienes el cluster con Cilium de código abierto, el instalador **se para y
 te lo dice** en vez de intentar adoptarlo. Para cambiar de camino hay que
 rehacer el cluster:
