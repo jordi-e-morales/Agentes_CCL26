@@ -18,6 +18,37 @@
 #   3. `--docker-username=<your=CEC>`    -> el `=` sobra
 #   4. `k8s-apiserver: https://$CP\_IP:$CP\_PORT` -> las barras producen
 #      literales, y Tetragon acaba apuntando a un host que no existe
+#   5. `read -rsp "ID Token: "` SIN nombre de variable -> lo que pegues cae en
+#      $REPLY, no en $ID_TOKEN, asi que el curl de abajo manda "Bearer " vacio
+#      y devuelve un 401 que parece culpa del token
+#
+# COMO SE SACA EL TOKEN QUE ESTE SCRIPT PIDE
+# ------------------------------------------
+# Son DOS tokens distintos y es la confusion que mas cuesta:
+#
+#   ID token      lo creas a mano en la UI de Artifactory. Solo sirve para
+#                 pedir el de acceso; no vale como password.
+#   Access token  lo devuelve el intercambio de abajo. ES EL QUE VA AQUI.
+#
+# El intercambio, corriendo en cualquier maquina con red (la laptop sirve, y
+# asi el ID token no pasa por el host del lab):
+#
+#   read -rsp "ID Token: " ID_TOKEN && echo && \
+#   curl -sL -H "Authorization: Bearer $ID_TOKEN" \
+#        -H "Content-type: application/json" -XPOST \
+#        https://artifactory.devhub-cloud.cisco.com/access/api/v1/tokens \
+#        -d '{"description":"isovalent CCL26","token_id":"ccl26-isovalent","token_type":"access_token"}' \
+#     | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("access_token") or d)'
+#
+# Y comprobarlo ANTES de correr este script, contra el repo que de verdad usa:
+#
+#   curl -s -o /dev/null -w "%{http_code}\n" -u "$CEC:$TOKEN" \
+#     https://artifactory.devhub-cloud.cisco.com/artifactory/isovalent-iep-helm/index.yaml
+#
+#   200 -> adelante
+#   401 -> token mal, caducado, o pusiste el ID token
+#   403 -> el token sirve pero tu cuenta no tiene acceso al repo de Isovalent.
+#          Eso se pide; no se arregla generando otro token.
 #
 # Y tres cosas que SE PERDERIAN si se usan los valores tal cual:
 #
@@ -191,7 +222,9 @@ if ! helm search repo devhub/cilium --version "$CILIUM_VER" 2>/dev/null | grep -
   echo "  No veo devhub/cilium $CILIUM_VER en el repositorio."
   echo "  Causas, por probabilidad:"
   echo "    - el token caduco (duran 90 dias)"
-  echo "    - es el ID token y no el token de ACCESO que se genera con el"
+  echo "    - pusiste el ID token y no el de ACCESO que se pide con el"
+  echo "      (el intercambio esta en la cabecera de este script)"
+  echo "    - tu cuenta no tiene acceso al repo: eso da 403 y se pide aparte"
   echo "    - el CEC no es el correcto (va el usuario, no el correo)"
   exit 1
 fi
