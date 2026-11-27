@@ -12,6 +12,21 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 log() { echo ""; echo "=== $1"; }
 
+# --solo-kind: crea el cluster y NO instala Cilium.
+#
+# Existe porque hay dos redes posibles y son excluyentes: la de codigo abierto
+# que instala este script, y la empresarial de lab/isovalent-up.sh. Cilium tiene
+# que ser el unico CNI del cluster, asi que instalar una y luego la otra encima
+# es pedirle a Helm que adopte una instalacion que no hizo.
+#
+# El camino limpio para Isovalent es:
+#   ./lab/cluster-up.sh --solo-kind   (el cluster, sin red)
+#   ./lab/isovalent-up.sh             (la red, empresarial)
+SOLO_KIND=no
+for arg in "$@"; do
+  [ "$arg" = "--solo-kind" ] && SOLO_KIND=si
+done
+
 if kind get clusters 2>/dev/null | grep -qx "$CLUSTER"; then
   log "El cluster '$CLUSTER' ya existe"
 else
@@ -19,6 +34,18 @@ else
   # Ojo con la configuracion: creamos el cluster SIN red.
   # Eso es a proposito. Cilium va a ser la red, y necesita ser el unico.
   kind create cluster --name "$CLUSTER" --config "$DIR/kind-cluster.yaml"
+fi
+
+if [ "$SOLO_KIND" = si ]; then
+  log "Cluster listo, SIN red"
+  kubectl get nodes
+  echo ""
+  echo "Los nodos van a quedar en NotReady hasta que haya un CNI. Es lo"
+  echo "esperado: todavia no hay red."
+  echo ""
+  echo "Siguiente paso:"
+  echo "  ./lab/isovalent-up.sh     la red, version empresarial"
+  exit 0
 fi
 
 # LA VERSION DE CILIUM, FIJA.

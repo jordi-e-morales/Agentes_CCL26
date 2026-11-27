@@ -17,7 +17,7 @@ Eso dice qué falta en cualquier momento. Si algo va mal, empieza por ahí.
 | | Qué | Dónde | ¿Terminal propia? |
 |---|---|---|---|
 | 1 | vLLM + Qwen2.5-32B | Contenedor en el host | No, va en segundo plano |
-| 2 | kind + Cilium | Cluster | No |
+| 2 | kind + Cilium **o Isovalent Enterprise** | Cluster | No |
 | 3 | Tetragon + políticas | Cluster | No |
 | 4 | PostgreSQL | Pod | No |
 | 5 | Servidor MCP | Pod | No |
@@ -78,17 +78,104 @@ cd ui && npm install && npm run build && cd ..
 Tarda: la primera vez descarga ~19 GB. Escribe `lab/endpoint.env`, que es de
 donde los agentes sacan la URL del motor.
 
-### 2. El cluster
+### 2. El cluster y la red
+
+**Hay que elegir aquí, y es excluyente.** Cilium tiene que ser el único CNI del
+cluster, así que no se instala una versión y luego la otra encima. Los dos
+caminos dan la misma demo; el empresarial además **demuestra** lo que la lámina
+7 de `PUNTOS-CLAVE.md` hoy sólo afirma.
+
+**Camino A — código abierto** (Cilium 1.20.1 + Tetragon 1.7.1)
 
 ```bash
-./lab/cluster-up.sh
+./lab/cluster-up.sh && ./lab/tetragon-up.sh
 ```
 
-### 3. El control de kernel
+**Camino B — Isovalent Enterprise** (Cilium 1.19.8 + Runtime Security 1.19.3)
+
+El cluster se crea **sin red**, y la red la pone el instalador empresarial —que
+trae Tetragon dentro, así que `tetragon-up.sh` no se corre:
 
 ```bash
-./lab/tetragon-up.sh
+./lab/cluster-up.sh --solo-kind
 ```
+
+```bash
+./lab/isovalent-up.sh
+```
+
+Pide tu CEC y el token de **acceso** de Artifactory por teclado (nunca por
+argumento: los argumentos se ven en `ps` y quedan en el historial). Entre
+`--solo-kind` y el instalador los nodos se quedan en `NotReady`: es lo
+esperado, todavía no hay red.
+
+Si ya tienes el cluster con Cilium de código abierto, el instalador **se para y
+te lo dice** en vez de intentar adoptarlo. Para cambiar de camino hay que
+rehacer el cluster:
+
+```bash
+kind delete cluster --name agentes && ./lab/cluster-up.sh --solo-kind && ./lab/isovalent-up.sh
+```
+
+Rehacer el cluster se lleva Postgres, el servidor MCP, los agentes y el
+Collector — todos vuelven con sus scripts, y el que tarda es
+`./malla/agentes-up.sh` porque reconstruye la imagen. **vLLM no se toca:** corre
+en el host, fuera de kind.
+
+#### Lo que el instalador empresarial hace distinto de las instrucciones de Cisco
+
+Las instrucciones oficiales traen **cuatro erratas**, y el script las corrige:
+`set CEC=` es sintaxis de `cmd` y no de bash; `--docker-password=$ACCESS-TOKEN`
+se parsea como `$ACCESS` seguido de `-TOKEN`; `--docker-username=<your=CEC>`
+lleva un `=` de más; y `https://$CP\_IP:$CP\_PORT` mete barras literales que
+dejan a Tetragon apuntando a un host que no existe.
+
+Y preserva **cuatro ajustes que el `values` de ejemplo se llevaría por
+delante**, los cuatro medidos, no preferencias:
+
+| Ajuste | Si se pierde |
+|---|---|
+| `hubble.ui.enabled` | no hay grafo, y el grafo es la mitad del segmento 3 |
+| `hubble.eventBufferCapacity=65535` | la historia baja de ~20 min a ~164 s: a los tres minutos los flujos que narras ya no existen |
+| `envoy.streamIdleTimeoutDurationSeconds=1800` | vuelve a 300 s y corta una deliberación en CPU (medidos 345 s sin mandar un byte) |
+| `tetragon.exportFilename=eventos.log` + `exportFilePerm=644` | el SIGKILL sigue funcionando y el panel *Lo que vio el kernel* se queda en blanco, **sin dar error** |
+
+Ese último es el que más vale: `ui/servidor.py` y `seguridad/ver-eventos.sh`
+leen esa ruta exacta, y el nombre por omisión (`tetragon.log`) se crea con
+permiso 600 la primera vez — y un archivo que ya existe se queda en 600 para
+siempre, así que cambiar el permiso después no arregla nada. El script
+**comprueba el archivo al final** y avisa si el chart empresarial renombró la
+clave, porque Helm acepta claves que no conoce y las ignora en silencio.
+
+**Tetragon va a `kube-system`**, no al namespace `tetragon` que piden las
+instrucciones, por la misma razón: las dos cosas que leen los eventos buscan
+ahí. Se puede cambiar con `NS_TETRAGON=tetragon`, y entonces hay que ajustar
+esas dos rutas.
+
+**Timescape y L2 announcements quedan apagados.** Timescape necesita un backend
+propio, y encenderlo contra uno que no existe puede dejar los pods de Cilium
+exportando a la nada: `--con-timescape` cuando quieras probarlo, como segundo
+paso. L2 anuncia IPs de LoadBalancer por ARP en una red física, y en kind no hay
+tal red.
+
+**Un efecto secundario bueno:** 1.19.8 arregla el desajuste de Hubble. La CLI va
+por la 1.19.4 —la última que existe— contra un relay 1.20.1, con el aviso de
+incompatibilidad que decidimos tolerar. En el camino B quedan en la misma línea.
+
+**Y un riesgo con fecha: el token caduca a los 90 días.** Si caduca antes del
+evento y hay que rehacer el cluster, no habría instalación posible. Por eso:
+
+```bash
+./lab/isovalent-up.sh --precargar
+```
+
+Guarda las imágenes dentro de kind con `kind load`. Una vez ahí el cluster se
+rehace sin Artifactory y sin token — el mismo patrón que ya usamos para vLLM y
+los agentes.
+
+### 3. Las políticas
+
+Son el **mismo CRD** en los dos caminos, así que se aplican igual:
 
 ```bash
 kubectl apply -f seguridad/tetragon-herramientas-lista-blanca.yaml
@@ -96,6 +183,13 @@ kubectl apply -f seguridad/tetragon-herramientas-lista-blanca.yaml
 
 ```bash
 kubectl apply -f seguridad/cilium-l7.yaml
+```
+
+En el camino B esto es lo primero que hay que verificar: la política L7 es lo
+que más depende de Envoy, y Envoy es lo que más cambia entre versiones.
+
+```bash
+bash seguridad/probar-l7.sh && bash seguridad/probar-lista-blanca.sh
 ```
 
 ### 4. La evidencia
@@ -325,7 +419,7 @@ antes. Ya mordió cinco veces.
 | `seguridad/*.yaml` | `kubectl apply -f ...` | En caliente, no reinicia nada |
 | Un ConfigMap o un Secret | **`kubectl rollout restart` del pod que lo usa** | No se recargan solos: el proceso los leyó al arrancar |
 | La etiqueta del redactor | **`./seguridad/redactor-limpio.sh`** antes de demostrar | Vive solo en el pod: un pod nuevo nace limpio por construcción |
-| Isovalent Enterprise | **`./lab/isovalent-up.sh`** en vez del Cilium de `cluster-up.sh` | El token de Artifactory caduca a los 90 días: precarga las imágenes |
+| Quieres pasar a Isovalent Enterprise | `kind delete cluster --name agentes`, luego **`./lab/cluster-up.sh --solo-kind`** y **`./lab/isovalent-up.sh`** | Cilium tiene que ser el único CNI: no se instala uno sobre el otro |
 | `datos/*.sql` | `./datos/postgres-up.sh --reset` | |
 | Se reinició un pod | rehacer su `port-forward` | Los puentes mueren con el pod, **y no avisan** |
 | Se recreó el cluster | `./lab/publica-vllm.sh` | La IP del host cambió |
@@ -379,9 +473,14 @@ bash seguridad/probar-l7.sh
 
 ## Para la migración a la instancia final
 
-El orden de arriba **es** el procedimiento. Lo único que no se puede dar por
-hecho es la versión del driver NVIDIA: si la instancia nueva trae 580 o
-superior, se destraban el NIM y las imágenes modernas de vLLM
-(`CLAUDE.md` §8). Pregúntalo al pedirla.
+El orden de arriba **es** el procedimiento. Dos cosas no se pueden dar por
+hechas:
+
+1. **La versión del driver NVIDIA.** Si la instancia nueva trae 580 o superior,
+   se destraban el NIM y las imágenes modernas de vLLM (`CLAUDE.md` §8).
+   Pregúntalo al pedirla.
+2. **Qué red va a llevar** (paso 2). En la instancia final conviene el camino B
+   con `--precargar`, para no depender de que el token siga vivo el día del
+   evento.
 
 Todo lo demás está en scripts idempotentes: `git clone` y la lista de arriba.
