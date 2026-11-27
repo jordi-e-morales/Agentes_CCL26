@@ -338,14 +338,77 @@ echo "  mas depende de Envoy, y Envoy es lo que mas cambia entre versiones."
 echo ""
 
 if [ "${PRECARGAR:-no}" = si ]; then
-  log "Guardando las imagenes en kind"
-  echo "  Para poder rehacer el cluster sin token ni Artifactory."
-  for img in $(kubectl -n kube-system get pods -l k8s-app=cilium \
-                 -o jsonpath='{.items[0].spec.containers[*].image}' 2>/dev/null) \
-             $(kubectl -n "$NS_TETRAGON" get pods -l app.kubernetes.io/name=tetragon \
-                 -o jsonpath='{.items[0].spec.containers[*].image}' 2>/dev/null); do
-    docker pull "$img" >/dev/null 2>&1 && \
-      kind load docker-image "$img" --name agentes >/dev/null 2>&1 && \
-      echo "  ok  $img"
+  log "Guardando las imagenes para poder rehacer el cluster sin token"
+  #
+  # POR QUE ESTO NO ES "kind load" Y SE ACABO
+  # -----------------------------------------
+  # Tres cosas que no son obvias:
+  #
+  #  1. Las imagenes YA estan dentro del nodo de kind -por eso los pods
+  #     corren-. Cargarlas otra vez ahi no sirve de nada. Lo que hace falta es
+  #     que esten en el DOCKER DEL HOST, que es de donde `kind load` las saca
+  #     cuando rehagas el cluster.
+  #
+  #  2. `docker pull` del host NO usa el Secret de Kubernetes. El Secret es
+  #     para que el kubelet baje imagenes; el docker del host no lo ve. Hace
+  #     falta `docker login` aparte, y sin el los pull fallan por 401.
+  #
+  #  3. Un `docker image prune` se lleva lo que no esta en uso. Por eso ademas
+  #     se guardan en un tar: eso sobrevive a cualquier limpieza.
+  #
+  DESTINO=${DESTINO_IMAGENES:-$HOME/isovalent-imagenes}
+  mkdir -p "$DESTINO"
+
+  # El login del host, que es el paso que faltaba.
+  if printf '%s' "$ACCESS_TOKEN" \
+       | docker login "$REGISTRO" --username "$CEC" --password-stdin >/dev/null 2>&1; then
+    echo "  ok   docker login en $REGISTRO"
+  else
+    echo "  FALLO el docker login. Sin el, los pull dan 401."
+    echo "  Las imagenes se quedan solo dentro del nodo de kind, asi que un"
+    echo "  'kind delete' las perderia. Reintenta con:"
+    echo "    ACCESS_TOKEN=... ./lab/isovalent-up.sh --precargar"
+    exit 1
+  fi
+
+  # Todas las imagenes de las dos instalaciones, initContainers incluidos: el
+  # chart de Cilium trae varios, y olvidarlos deja el cluster a medias en el
+  # rearranque sin token.
+  IMAGENES=$(
+    { kubectl -n kube-system get pods -l k8s-app=cilium -o json
+      kubectl -n kube-system get pods -l 'io.cilium/app=operator' -o json
+      kubectl -n kube-system get pods -l k8s-app=hubble-relay -o json
+      kubectl -n kube-system get pods -l k8s-app=hubble-ui -o json
+      kubectl -n "$NS_TETRAGON" get pods -l app.kubernetes.io/name=tetragon -o json
+    } 2>/dev/null \
+      | grep -oE '"image": *"[^"]+"' \
+      | sed -E 's/.*"image": *"([^"]+)".*/\1/' \
+      | sort -u
+  )
+  [ -z "$IMAGENES" ] && { echo "  No encontre imagenes que guardar."; exit 1; }
+
+  fallos=0
+  for img in $IMAGENES; do
+    tar="$DESTINO/$(echo "$img" | tr '/:' '__').tar"
+    if docker pull "$img" >/dev/null 2>&1 && docker save -o "$tar" "$img" 2>/dev/null; then
+      echo "  ok   $img"
+    else
+      echo "  FALLO $img"
+      fallos=$((fallos + 1))
+    fi
   done
+
+  echo ""
+  if [ "$fallos" -eq 0 ]; then
+    echo "  Guardadas en $DESTINO"
+    echo ""
+    echo "  Para rehacer el cluster cuando el token ya no sirva:"
+    echo "    kind delete cluster --name agentes"
+    echo "    ./lab/cluster-up.sh --solo-kind"
+    echo "    for t in $DESTINO/*.tar; do docker load -i \"\$t\"; done"
+    echo "    ./lab/isovalent-up.sh        (ya no baja nada de Artifactory)"
+  else
+    echo "  $fallos imagenes no se pudieron guardar. El cluster de HOY funciona"
+    echo "  igual, pero rehacerlo sin token no esta garantizado."
+  fi
 fi
