@@ -156,6 +156,10 @@ for arg in "$@"; do
     --con-timescape) TIMESCAPE=si ;;
     --con-l2)        L2=si ;;
     --precargar)     PRECARGAR=si ;;
+    # Guardar las imagenes SIN volver a pasar por helm. Util cuando el cluster
+    # ya esta bien y solo quieres rehacer el respaldo: tocar una instalacion
+    # que funciona para un respaldo es mal negocio.
+    --solo-precargar) PRECARGAR=si; SOLO_PRECARGA=si ;;
   esac
 done
 
@@ -390,6 +394,11 @@ EOF
 echo "  ok   (timescape: $TIMESCAPE, l2: $L2)"
 
 # --- Instalar ----------------------------------------------------------------
+if [ "${SOLO_PRECARGA:-no}" = si ]; then
+  echo ""
+  echo "=== Solo guardando imagenes; no se toca la instalacion"
+else
+
 log "CRDs de Prometheus"
 kubectl apply --server-side -f \
   https://github.com/prometheus-operator/prometheus-operator/releases/latest/download/stripped-down-crds.yaml \
@@ -438,6 +447,8 @@ if [ -n "$pod_tet" ]; then
 else
   echo "  (no encuentro el pod de Tetragon todavia)"
 fi
+
+fi   # fin de la instalacion (se salta con --solo-precargar)
 
 echo ""
 echo "=== Y ahora, lo que de verdad importa comprobar"
@@ -489,20 +500,28 @@ if [ "${PRECARGAR:-no}" = si ]; then
     exit 1
   fi
 
-  # Todas las imagenes de las dos instalaciones, initContainers incluidos: el
-  # chart de Cilium trae varios, y olvidarlos deja el cluster a medias en el
-  # rearranque sin token.
-  IMAGENES=$(
-    { kubectl -n kube-system get pods -l k8s-app=cilium -o json
-      kubectl -n kube-system get pods -l 'io.cilium/app=operator' -o json
-      kubectl -n kube-system get pods -l k8s-app=hubble-relay -o json
-      kubectl -n kube-system get pods -l k8s-app=hubble-ui -o json
-      kubectl -n "$NS_TETRAGON" get pods -l app.kubernetes.io/name=tetragon -o json
-    } 2>/dev/null \
-      | grep -oE '"image": *"[^"]+"' \
-      | sed -E 's/.*"image": *"([^"]+)".*/\1/' \
-      | sort -u
-  )
+  # QUE IMAGENES, Y POR QUE ASI.
+  #
+  # Dos errores que tuvo la primera version de esto:
+  #
+  #  a) Leia tambien el ESTADO de los contenedores. Cuando una imagen se
+  #     referencia por digest, containerd reporta ahi "sha256:..." a secas,
+  #     sin repositorio. Esos no se pueden bajar y salian como FALLO siendo
+  #     duplicados de imagenes ya guardadas: ruido que esconde un fallo real.
+  #     Ahora solo se lee el SPEC, que siempre trae la referencia completa.
+  #
+  #  b) Iba por etiquetas, una por componente, y se dejaba fuera a
+  #     CILIUM-ENVOY -que tiene la suya propia-. Justo la que ejecuta las
+  #     politicas L7, o sea la pieza del segmento 6. Ahora se barren los dos
+  #     namespaces enteros y se filtra por lo que de verdad nos interesa.
+  spec_imgs() {
+    kubectl -n "$1" get pods -o jsonpath='{range .items[*]}{range .spec.initContainers[*]}{.image}{"\n"}{end}{range .spec.containers[*]}{.image}{"\n"}{end}{end}' 2>/dev/null
+  }
+  IMAGENES=$( { spec_imgs kube-system; spec_imgs "$NS_TETRAGON"; } \
+    | grep -E 'isovalent-iep-docker|cilium|hubble|tetragon' \
+    | grep -v '^sha256:' \
+    | sort -u )
+
   [ -z "$IMAGENES" ] && { echo "  No encontre imagenes que guardar."; exit 1; }
 
   fallos=0
