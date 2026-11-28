@@ -18,3 +18,7 @@ lab/endpoint.env
 *~
 .DS_Store
 observabilidad/.splunk-destino
+
+# El modelo entrenado. NO se versiona: lo entrena el Dockerfile con semilla
+# fija, asi que es reproducible y el repo no carga binarios.
+modelo/riesgo.joblib

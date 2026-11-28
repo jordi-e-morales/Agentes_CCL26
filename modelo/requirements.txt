@@ -1,0 +1,19 @@
+# Dependencias del agente de scoring. APARTE de las del resto del proyecto, y
+# a proposito.
+#
+# scikit-learn pesa mas de 100 MB con numpy y scipy detras. Meterlo en la
+# imagen de los agentes la engordaria para los tres, y ninguno de los otros lo
+# usa. Ademas dice algo cierto sobre el diseño: este agente no comparte nada
+# con los demas -ni siquiera el modelo de lenguaje, porque no usa ninguno-.
+scikit-learn
+joblib
+numpy
+
+# El servidor HTTP de las tres rutas A2A. Mismo criterio que en el
+# requirements.txt de la raiz: si se importa, se declara.
+starlette
+uvicorn
+
+# Trazas. El agente emite su span invoke_agent como cualquier otro.
+opentelemetry-sdk
+opentelemetry-exporter-otlp-proto-http
