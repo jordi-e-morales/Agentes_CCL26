@@ -42,6 +42,11 @@ SA=headlamp-admin
 # Cuanto dura el token que se imprime. Corto a proposito: es una credencial
 # con permisos amplios y no tiene por que sobrevivir a la jornada.
 DURACION=${DURACION:-24h}
+# Con que permisos mira el cluster. cluster-admin porque esto es un lab y lo
+# que se quiere es verlo todo; `view` basta para enseñar pods y logs, y es lo
+# que yo usaria si alguien de la sala va a mirar la pantalla con atencion:
+#   ROL=view ./lab/headlamp-up.sh
+ROL=${ROL:-cluster-admin}
 
 log() { echo ""; echo "=== $1"; }
 
@@ -59,6 +64,9 @@ if [ "${ACCION:-}" = down ]; then
   log "Quitando Headlamp"
   helm -n "$NS" uninstall headlamp >/dev/null 2>&1 && echo "  ok  release"
   kubectl delete clusterrolebinding "$SA" --ignore-not-found >/dev/null 2>&1
+  for crb in $(kubectl get clusterrolebinding -o name 2>/dev/null | grep 'headlamp-pod-'); do
+    kubectl delete "$crb" --ignore-not-found >/dev/null 2>&1
+  done
   kubectl delete ns "$NS" --ignore-not-found >/dev/null 2>&1 && echo "  ok  namespace"
   exit 0
 fi
@@ -74,12 +82,33 @@ fi
 # la respuesta honesta es "es una herramienta de presentador, no parte del
 # sistema que estamos gobernando". Para dar solo lectura, cambia cluster-admin
 # por `view` en la linea del ClusterRoleBinding.
+#
+# SON DOS CUENTAS, Y ESA ES LA TRAMPA.
+#
+#   headlamp-admin   la que se usa si pegas el token en la pantalla de login
+#   la del POD       la que Headlamp usa cuando NO pide token
+#
+# Si solo das permisos a la primera y la UI no pide token, entras igual y todo
+# sale vacio con "You don't have permissions to view this resource". El
+# mensaje suena a problema de la cuenta que acabas de crear, y es de la otra.
+# Medido el 2026-11-27. Asi que se le dan permisos a las dos.
 crear_cuenta() {
   kubectl create ns "$NS" >/dev/null 2>&1 || true
   kubectl -n "$NS" create serviceaccount "$SA" >/dev/null 2>&1 || true
   kubectl create clusterrolebinding "$SA" \
-    --clusterrole=cluster-admin \
+    --clusterrole="$ROL" \
     --serviceaccount="$NS:$SA" >/dev/null 2>&1 || true
+
+  # La del pod se descubre, no se adivina: si el chart cambia el nombre por
+  # omision, un nombre fijo aqui fallaria en silencio.
+  SA_POD=$(kubectl -n "$NS" get deploy \
+    -o jsonpath='{.items[0].spec.template.spec.serviceAccountName}' 2>/dev/null)
+  if [ -n "$SA_POD" ]; then
+    kubectl create clusterrolebinding "headlamp-pod-$SA_POD" \
+      --clusterrole="$ROL" \
+      --serviceaccount="$NS:$SA_POD" >/dev/null 2>&1 || true
+    echo "  permisos ($ROL): $SA y $SA_POD"
+  fi
 }
 
 imprimir_token() {
