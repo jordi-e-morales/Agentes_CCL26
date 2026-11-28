@@ -95,20 +95,46 @@ fi
 crear_cuenta() {
   kubectl create ns "$NS" >/dev/null 2>&1 || true
   kubectl -n "$NS" create serviceaccount "$SA" >/dev/null 2>&1 || true
-  kubectl create clusterrolebinding "$SA" \
-    --clusterrole="$ROL" \
-    --serviceaccount="$NS:$SA" >/dev/null 2>&1 || true
+
+  # NADA DE `>/dev/null 2>&1 || true` AQUI.
+  #
+  # La primera version ataba los permisos asi, en silencio. Cuando fallo, el
+  # script siguio tan contento, imprimio el token, y la UI aparecio vacia con
+  # "You don't have permissions to view this resource" -un mensaje que no
+  # menciona ClusterRoleBinding por ningun lado-. Medido el 2026-11-27.
+  #
+  # Ahora cada atadura se comprueba de verdad: con `kubectl auth can-i`, que
+  # es la unica forma de saber si quedo, porque `create` puede devolver 0 y
+  # aun asi no ser lo que querias si ya existia con otro rol.
+  atar() {   # cuenta  nombre-de-la-atadura
+    kubectl get clusterrolebinding "$2" >/dev/null 2>&1 \
+      || kubectl create clusterrolebinding "$2" \
+           --clusterrole="$ROL" --serviceaccount="$NS:$1" >/dev/null 2>&1
+    if [ "$(kubectl auth can-i list pods --all-namespaces \
+              --as="system:serviceaccount:$NS:$1" 2>/dev/null)" = yes ]; then
+      echo "  ok     $1 puede ver el cluster"
+    else
+      echo "  FALLA  $1 NO puede ver nada. La UI va a salir vacia."
+      echo "         kubectl create clusterrolebinding $2 \\"
+      echo "           --clusterrole=$ROL --serviceaccount=$NS:$1"
+    fi
+  }
+
+  # SON DOS CUENTAS, Y ESA ES LA TRAMPA.
+  #
+  #   headlamp-admin   la que se usa si pegas el token en el login
+  #   la del POD       la que Headlamp usa cuando NO pide token
+  #
+  # Darle permisos solo a una deja el otro camino de entrada en blanco, y
+  # cual de los dos uses depende de si la UI te pide token o no.
+  atar "$SA" "$SA"
 
   # La del pod se descubre, no se adivina: si el chart cambia el nombre por
   # omision, un nombre fijo aqui fallaria en silencio.
   SA_POD=$(kubectl -n "$NS" get deploy \
     -o jsonpath='{.items[0].spec.template.spec.serviceAccountName}' 2>/dev/null)
-  if [ -n "$SA_POD" ]; then
-    kubectl create clusterrolebinding "headlamp-pod-$SA_POD" \
-      --clusterrole="$ROL" \
-      --serviceaccount="$NS:$SA_POD" >/dev/null 2>&1 || true
-    echo "  permisos ($ROL): $SA y $SA_POD"
-  fi
+  [ -n "$SA_POD" ] && [ "$SA_POD" != "$SA" ] && atar "$SA_POD" "headlamp-pod-$SA_POD"
+  return 0
 }
 
 imprimir_token() {
