@@ -106,12 +106,35 @@ crear_cuenta() {
   # Ahora cada atadura se comprueba de verdad: con `kubectl auth can-i`, que
   # es la unica forma de saber si quedo, porque `create` puede devolver 0 y
   # aun asi no ser lo que querias si ya existia con otro rol.
+  # QUE UNA ATADURA EXISTA NO QUIERE DECIR QUE SIRVA.
+  #
+  # Visto el 2026-11-27: habia un ClusterRoleBinding llamado "headlamp-admin",
+  # con ClusterRole/cluster-admin, y la cuenta headlamp-admin seguia sin poder
+  # ver nada. Su SUJETO apuntaba a otra ServiceAccount. En `kubectl get` se ve
+  # idéntico a uno correcto -mismo nombre, mismo rol-, y el unico sintoma es
+  # una UI en blanco.
+  #
+  # Por eso aqui no se pregunta "existe?" sino "funciona?", con `auth can-i`.
+  # Y si no funciona, se rehace: borrar y crear es barato, y una atadura
+  # llamada como la nuestra que apunta a otro sitio no es algo que queramos
+  # conservar.
   atar() {   # cuenta  nombre-de-la-atadura
-    kubectl get clusterrolebinding "$2" >/dev/null 2>&1 \
-      || kubectl create clusterrolebinding "$2" \
-           --clusterrole="$ROL" --serviceaccount="$NS:$1" >/dev/null 2>&1
-    if [ "$(kubectl auth can-i list pods --all-namespaces \
-              --as="system:serviceaccount:$NS:$1" 2>/dev/null)" = yes ]; then
+    puede() {
+      [ "$(kubectl auth can-i list pods --all-namespaces \
+             --as="system:serviceaccount:$NS:$1" 2>/dev/null)" = yes ]
+    }
+    if puede "$1"; then echo "  ok     $1 ya podia ver el cluster"; return 0; fi
+
+    kubectl create clusterrolebinding "$2" --clusterrole="$ROL" \
+      --serviceaccount="$NS:$1" >/dev/null 2>&1
+    if puede "$1"; then echo "  ok     $1 puede ver el cluster"; return 0; fi
+
+    # Seguia sin poder: o existia con otro sujeto, o con otro rol.
+    echo "  (rehaciendo $2, existia pero no servia)"
+    kubectl delete clusterrolebinding "$2" --ignore-not-found >/dev/null 2>&1
+    kubectl create clusterrolebinding "$2" --clusterrole="$ROL" \
+      --serviceaccount="$NS:$1" >/dev/null 2>&1
+    if puede "$1"; then
       echo "  ok     $1 puede ver el cluster"
     else
       echo "  FALLA  $1 NO puede ver nada. La UI va a salir vacia."
