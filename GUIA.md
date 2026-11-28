@@ -27,6 +27,7 @@ Eso dice qué falta en cualquier momento. Si algo va mal, empieza por ahí.
 | 9 | **Agente defensor** | **Pod** | No |
 | 10 | Los dos `port-forward` | Host | **Sí** |
 | 11 | Relay de Hubble | Host | **Sí** |
+| — | Headlamp (opcional) | Pod + puente | **Sí**, si lo usas |
 | 12 | La interfaz | Host | **Sí** |
 
 **Tres terminales** se quedan abiertas. Lo demás vive en el cluster o en Docker
@@ -271,6 +272,36 @@ Dos cosas que hacen parecer que está roto y no lo está:
    arriba a la izquierda.
 2. **Dibuja tráfico, no diseño.** Si nadie está hablando no hay nada que pintar.
    Lanza una deliberación y el grafo aparece.
+
+### 8. Headlamp, el visor del cluster (opcional)
+
+```bash
+./lab/headlamp-up.sh
+```
+
+Instala Headlamp 0.46.0, crea la cuenta, imprime el token y abre el puente en
+`http://<host>:12001`. Se queda corriendo; Ctrl+C cierra el puente sin
+desinstalar nada. Un token nuevo: `./lab/headlamp-up.sh --token`. Quitarlo:
+`--down`.
+
+Sirve para enseñar pods, Deployments y logs sin teclear `kubectl` en vivo. **Es
+una ventana del presentador, no una pieza de la malla**: nada depende de ella.
+
+**Y no sustituye a Hubble UI.** La diferencia es la del §6:
+
+| | Qué dibuja |
+|---|---|
+| Headlamp | lo que está **declarado**: objetos de la API de Kubernetes |
+| Hubble UI | lo que de verdad **pasó**: tráfico observado |
+
+El grafo de agentes del segmento 3 se enseña con Hubble. Un visor de objetos es
+un diagrama de diseño con otro nombre, y en una sesión sobre observabilidad eso
+es casi una contradicción.
+
+Entra con un token de ServiceAccount con **cluster-admin**, y conviene saberlo
+por si alguien pregunta: es una herramienta de presentador, no parte del sistema
+que el segmento 6 gobierna. Para solo lectura, cambia `cluster-admin` por `view`
+en el script.
 
 ---
 
