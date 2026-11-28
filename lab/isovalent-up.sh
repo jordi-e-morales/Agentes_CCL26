@@ -218,13 +218,58 @@ ACCESS_TOKEN="$(printf '%s' "$ACCESS_TOKEN" | tr -d '[:space:]')"
 
 # --- Lo que las instrucciones piden a mano, aqui se deduce -------------------
 log "Mirando el cluster"
-# `kubectl cluster-info` imprime la URL con color; se le quitan los escapes
-# ANSI o el sed de abajo se come caracteres de mas.
-URL_CP=$(kubectl cluster-info 2>/dev/null \
-  | sed -e 's/\x1b\[[0-9;]*m//g' \
-  | grep -i "control plane" | grep -oE 'https?://[^ ]+' | head -1)
-CP_IP=$(echo "$URL_CP"   | sed -E 's#^https?://##; s#:.*##')
-CP_PORT=$(echo "$URL_CP" | sed -E 's#.*:([0-9]+).*#\1#')
+#
+# LA DIRECCION DEL API SERVER TIENE QUE SER LA DE DENTRO, NO LA DE FUERA.
+#
+# Las instrucciones dicen sacarla de `kubectl cluster-info`, y en un cluster
+# normal esta bien. En kind NO: cluster-info devuelve
+#
+#     https://127.0.0.1:<puerto-aleatorio>
+#
+# que es el mapeo que Docker publica en TU host. Los pods de Cilium corren en
+# la red del nodo, donde 127.0.0.1 es el nodo mismo y ese puerto no escucha
+# nada. El API server se alcanza en la IP interna del control-plane, 6443.
+#
+# El sintoma, que no apunta a esto por ningun lado: el init container `config`
+# entra en CrashLoopBackOff y los pods se quedan en Init:0/7 para siempre.
+# Medido el 2026-11-27.
+# Si vienen por entorno, mandan: CP_IP=... CP_PORT=... ./lab/isovalent-up.sh
+if [ -n "${CP_IP:-}" ] && [ -n "${CP_PORT:-}" ]; then
+  PROVEEDOR=manual
+else
+  PROVEEDOR=$(kubectl get nodes -o jsonpath='{.items[0].spec.providerID}' 2>/dev/null)
+fi
+case "$PROVEEDOR" in
+  manual)
+    echo "  (direccion dada a mano)"
+    ;;
+  kind://*)
+    CP_IP=$(kubectl get node -l node-role.kubernetes.io/control-plane \
+      -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}' 2>/dev/null)
+    CP_PORT=6443
+    echo "  (kind: uso la IP interna del control-plane, no la de cluster-info)"
+    ;;
+  *)
+    # `kubectl cluster-info` imprime la URL con color; se le quitan los escapes
+    # ANSI o el sed de abajo se come caracteres de mas.
+    URL_CP=$(kubectl cluster-info 2>/dev/null \
+      | sed -e 's/\x1b\[[0-9;]*m//g' \
+      | grep -i "control plane" | grep -oE 'https?://[^ ]+' | head -1)
+    CP_IP=$(echo "$URL_CP"   | sed -E 's#^https?://##; s#:.*##')
+    CP_PORT=$(echo "$URL_CP" | sed -E 's#.*:([0-9]+).*#\1#')
+    ;;
+esac
+
+# Una direccion de loopback aqui no puede ser correcta: el que la va a usar es
+# un pod, y para el 127.0.0.1 es otro sitio. Mejor pararse que instalar algo
+# que se va a quedar en Init:0/7 durante diez minutos.
+case "$CP_IP" in
+  127.*|localhost|::1)
+    echo "  La IP del API server salio como '$CP_IP', que es loopback."
+    echo "  Desde un pod eso no lleva al API server. Pasala a mano:"
+    echo "    CP_IP=<ip> CP_PORT=6443 ./lab/isovalent-up.sh"
+    exit 1 ;;
+esac
 # Nodos SCHEDULABLES, que no es lo mismo que nodos. En kind el control-plane
 # lleva taint, asi que con 1 worker las replicas son 1. Poner 2 aqui deja la
 # segunda del operador en Pending para siempre, por antiafinidad.
