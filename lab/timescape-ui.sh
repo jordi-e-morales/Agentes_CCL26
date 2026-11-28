@@ -34,15 +34,23 @@ set -uo pipefail
 PUERTO=${PUERTO:-12002}
 NS=${NS:-kube-system}
 
-# El Service se busca en vez de darlo por hecho: el nombre depende de la
-# version del chart, y un nombre fijo aqui fallaria con un error de kubectl
-# que no dice nada util.
-SVC=$(kubectl -n "$NS" get svc --no-headers 2>/dev/null \
-  | awk '{print $1}' | grep -i 'timescape.*ui\|ui.*timescape' | head -1)
+# NO HAY SERVICE DE UI APARTE, Y ESA ERA MI SUPOSICION EQUIVOCADA.
+#
+# Timescape expone TODO desde un solo Service, con los puertos nombrados:
+#
+#   push  4260    stream 4261   grpc 443
+#   ui    8080    metrics 9090  ch-metrics 8001
+#
+# Y el pod lleva dos contenedores, clickhouse y timescape. Asi que buscar un
+# servicio con "ui" en el NOMBRE no encuentra nada; hay que buscar el que
+# tenga un PUERTO llamado "ui". Visto el 2026-11-27.
+SVC=$(kubectl -n "$NS" get svc \
+  -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{range .spec.ports[*]}{.name}{" "}{end}{"\n"}{end}' \
+  2>/dev/null | grep -i timescape | grep -w ui | awk '{print $1}' | head -1)
 
 if [ -z "$SVC" ]; then
   echo ""
-  echo "No encuentro el Service de la UI de Timescape en $NS."
+  echo "No encuentro un Service de Timescape con un puerto llamado 'ui' en $NS."
   echo ""
   echo "Lo que hay con 'timescape' en el nombre:"
   kubectl -n "$NS" get svc --no-headers 2>/dev/null | grep -i timescape | sed 's/^/  /' \
@@ -53,9 +61,11 @@ if [ -z "$SVC" ]; then
   exit 1
 fi
 
-# El puerto del Service tampoco se adivina.
-PUERTO_SVC=$(kubectl -n "$NS" get svc "$SVC" -o jsonpath='{.spec.ports[0].port}' 2>/dev/null)
-[ -z "$PUERTO_SVC" ] && PUERTO_SVC=80
+# El puerto, por su nombre y no por su posicion: el orden puede cambiar entre
+# versiones y acabarias con el puerto de metricas en el navegador.
+PUERTO_SVC=$(kubectl -n "$NS" get svc "$SVC" \
+  -o jsonpath='{.spec.ports[?(@.name=="ui")].port}' 2>/dev/null)
+[ -z "$PUERTO_SVC" ] && PUERTO_SVC=8080
 
 IP=$(hostname -I 2>/dev/null | awk '{print $1}')
 TTL=$(kubectl -n "$NS" get cm cilium-config -o jsonpath='{.data.hubble-timescape-ttl}' 2>/dev/null)
@@ -71,9 +81,10 @@ echo ""
 echo "    SIN PERSISTENCIA: si el pod se reinicia, la historia se va entera."
 echo "    Es la decision tomada para una sesion de dos horas, no un fallo."
 echo ""
-echo "    Si sale vacia y ya hubo trafico, lo primero a mirar es el destino"
-echo "    del exportador:"
-echo "      kubectl -n $NS get cm cilium-config -o jsonpath='{.data.hubble-export-timescape-targets}'"
+echo "    Si sale vacia y ya hubo trafico, mira el destino del exportador:"
+echo "      kubectl -n $NS get cm cilium-config \\"
+echo "        -o jsonpath='{.data.hubble-export-timescape-targets}'"
+echo "      (verificado el 2026-11-27: hubble-timescape.kube-system.svc:4261)"
 echo ""
 echo "    Ctrl+C para cerrarlo."
 echo ""
