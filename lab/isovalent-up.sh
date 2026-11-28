@@ -142,6 +142,18 @@ BUFFER_HUBBLE=${BUFFER_HUBBLE:-65535}
 #   ./lab/isovalent-up.sh --con-timescape
 TIMESCAPE=no
 
+# SIN PERSISTENCIA, A PROPOSITO.
+#
+# El formato de la sesion son dos horas en tandas de 15 minutos. Un PVC no
+# aporta nada ahi y si añade algo que puede fallar. Lo que si importa es el
+# TTL: sin persistencia el chart lo baja a 1 hora por omision, asi que la
+# primera tanda ya no existiria en la ultima. 2h cubre la jornada entera.
+#
+#   TS_PERSISTENCIA=si TS_TAMANO=10Gi ./lab/isovalent-up.sh --con-timescape
+TS_PERSISTENCIA=${TS_PERSISTENCIA:-no}
+TS_TAMANO=${TS_TAMANO:-10Gi}
+TS_TTL=${TS_TTL:-2h}
+
 # L2 announcements anuncia IPs de LoadBalancer por ARP en una red fisica. En
 # kind no hay tal red: a los servicios se llega por port-forward. Se deja
 # apagado porque encender lo que no se usa solo añade superficie de fallo.
@@ -348,8 +360,22 @@ hubble:
   ui:
     enabled: true
   eventBufferCapacity: $BUFFER_HUBBLE
+  # SON DOS INTERRUPTORES, NO UNO.
+  #
+  #   hubble.timescape.enabled         monta el almacen (ClickHouse + UI)
+  #   hubble.export.timescape.enabled  hace que los flujos LLEGUEN ahi
+  #
+  # Encender solo el primero deja un Timescape impecable y vacio, que es un
+  # fallo que no se parece a un fallo.
   timescape:
     enabled: $([ "$TIMESCAPE" = si ] && echo true || echo false)
+    ttl: "$TS_TTL"
+    persistence:
+      enabled: $([ "$TS_PERSISTENCIA" = si ] && echo true || echo false)
+      volumeSize: $TS_TAMANO
+  export:
+    timescape:
+      enabled: $([ "$TIMESCAPE" = si ] && echo true || echo false)
 # Con politicas L7 el trafico HTTP pasa por Envoy. 300 s por omision cortaria
 # una deliberacion en CPU; medido 345 s sin mandar un byte.
 envoy:
@@ -449,6 +475,42 @@ else
 fi
 
 fi   # fin de la instalacion (se salta con --solo-precargar)
+
+if [ "$TIMESCAPE" = si ]; then
+  log "Timescape"
+  kubectl -n kube-system get pods -o custom-columns='POD:.metadata.name,ESTADO:.status.phase' \
+    --no-headers 2>/dev/null | grep -i timescape | sed 's/^/  /' || echo "  (todavia no hay pods)"
+  echo ""
+  echo "  Servicios:"
+  kubectl -n kube-system get svc --no-headers 2>/dev/null \
+    | grep -i timescape | awk '{print "    "$1"  "$5}'
+  #
+  # EL DESTINO DEL EXPORTADOR, COMPROBADO Y NO SUPUESTO.
+  #
+  # La documentacion del chart dice que por omision apunta a
+  # hubble-timescape-export.hubble-timescape.svc. Pero el Timescape integrado
+  # se despliega en el namespace de la release, que aqui es kube-system. Si
+  # ese destino no coincide con un Service que exista, los flujos no llegan
+  # nunca y Timescape se ve perfecto y vacio.
+  echo ""
+  DESTINO=$(kubectl -n kube-system get cm cilium-config \
+    -o jsonpath='{.data.hubble-export-timescape-targets}' 2>/dev/null)
+  [ -z "$DESTINO" ] && DESTINO=$(kubectl -n kube-system get cm cilium-config \
+    -o jsonpath='{.data.hubble-export-timescape-target}' 2>/dev/null)
+  echo "  El exportador apunta a: ${DESTINO:-(no encuentro la clave en cilium-config)}"
+  case "$DESTINO" in
+    *kube-system*|"") : ;;
+    *) echo ""
+       echo "  OJO: ese destino NO esta en kube-system, que es donde quedo"
+       echo "  Timescape. Si la UI sale vacia, es esto. Se corrige con:"
+       echo "    helm upgrade cilium devhub/cilium --version $CILIUM_VER \\"
+       echo "      --namespace kube-system --reuse-values --set \\"
+       echo "      hubble.export.timescape.target=<servicio-de-arriba>:4261" ;;
+  esac
+  echo ""
+  echo "  Para abrirlo:  ./lab/timescape-ui.sh"
+  echo "  Historia: $TS_TTL (persistencia: $TS_PERSISTENCIA)"
+fi
 
 echo ""
 echo "=== Y ahora, lo que de verdad importa comprobar"
