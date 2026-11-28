@@ -39,6 +39,27 @@
 # puede seguir llevando el conjunto viejo. Si sigue dando 403 justo despues
 # de la aprobacion, eso es lo primero que hay que descartar.
 #
+# CUANTO TARDA: ~25 minutos medidos el 2026-11-27 (403 a las 17:18, 200 a las
+# 17:43), con el token ya regenerado despues del join. O sea que un 403 justo
+# despues de entrar al grupo es NORMAL y no hay que hacer nada mas que
+# esperar. En vez de estar pendiente:
+#
+#   while :; do c=$(curl -s -o /dev/null -w '%{http_code}' \
+#     -H "Authorization: Bearer $(cat ~/.devhub-token)" \
+#     https://artifactory.devhub-cloud.cisco.com/artifactory/isovalent-iep-helm/index.yaml); \
+#     printf '%s  %s\n' "$(date +%H:%M)" "$c"; [ "$c" = 200 ] && break; sleep 300; done
+#
+# Guarda el token en ~/.devhub-token con `umask 077`, NUNCA dentro de este
+# repo: vive en OneDrive y es git. Y borralo al terminar.
+#
+# Dos cosas que nos hicieron perder vueltas y que el bucle de arriba evita:
+#   - un 401 en vez de 403 NO es progreso: es que la variable del token esta
+#     vacia, normalmente por correr el curl en otra pestaña donde nunca se
+#     definio. Por eso el bucle lee de un archivo y no de $TOK.
+#   - `read -rs` no muestra NADA al pegar, ni asteriscos, asi que la linea
+#     parece congelada y es facil darle Enter en vacio. El intercambio
+#     entonces falla en silencio y el token queda vacio.
+#
 # COMO SE SACA EL TOKEN QUE ESTE SCRIPT PIDE
 # ------------------------------------------
 # Son DOS tokens distintos y es la confusion que mas cuesta:
